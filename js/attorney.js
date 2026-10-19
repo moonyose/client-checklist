@@ -52,7 +52,7 @@
         if (t.due) o.d = t.due; if (t.note) o.n = t.note;
         var ov = {}; Object.keys(t.o || {}).forEach(function (k) { if (t.o[k]) ov[k] = t.o[k]; });
         if (Object.keys(ov).length) o.o = ov;
-        if (!t.libId) { o.ti = t.title; if (t.text) o.tx = t.text; }
+        if (!t.libId) { o.ti = t.title; if (t.text) o.tx = t.text; if (t.custom) o.cu = t.custom; }
         return o;
       }) };
   }
@@ -77,10 +77,10 @@
     $('attName').value = d.attorney.name; $('attPhone').value = d.attorney.phone; $('attEmail').value = d.attorney.email;
     $('remEmail').checked = !!d.reminders.email; $('remSms').checked = !!d.reminders.sms;
     $('remEmailAddr').value = d.reminders.emailAddr || ''; $('remPhone').value = d.reminders.phone || ''; $('remTime').value = d.reminders.time || '09:00';
-    renderTasks(); renderLibrary(); renderLink();
+    renderTasks(); renderLibrary(); renderLink(); renderRepoShare();
   }
 
-  function taskTitle(t) { var it = LIB.byId[t.libId]; return it ? it.title.en : (t.title || 'Custom task'); }
+  function taskTitle(t) { var it = LIB.byId[t.libId]; if (it) return it.title.en; var ct = t.custom && t.custom.title; return t.title || (ct && (ct.en || ct)) || 'Custom task'; }
 
   function renderTasks() {
     var d = cur();
@@ -121,6 +121,38 @@
       return '<div class="lib-item' + (used[it.id] ? ' added' : '') + '"><div class="t"><b>' + CC.esc(it.title.en) + '</b><span class="badge ' + it.type + '">' + TYPE_LABEL[it.type] + '</span>' +
         '<span class="small muted">' + v + '</span></div><button class="btn small" data-add="' + it.id + '"' + (used[it.id] ? ' disabled' : '') + '>' + (used[it.id] ? 'Added' : 'Add') + '</button></div>';
     }).join('');
+  }
+
+  /* Repo client files (read-only view; edit here then download JSON, or let the AI assistant commit) */
+  var repoFiles = {};
+  function loadRepoClients() {
+    $('repoClients').textContent = 'Loading…';
+    CC.listRepoClients().then(function (paths) {
+      return Promise.all(paths.map(function (p) { return CC.fetchRepoJSON(p).then(function (r) { return r.data; }).catch(function () { return null; }); }));
+    }).then(function (docs) {
+      repoFiles = {}; docs.filter(Boolean).forEach(function (d) { repoFiles[d.id] = d; });
+      var ids = Object.keys(repoFiles);
+      $('repoClients').innerHTML = ids.length ? ids.map(function (id) { var d = repoFiles[id];
+        return '<button class="draft" data-repo="' + id + '"><b>' + CC.esc(d.client.name) + '</b><small>' + d.tasks.filter(function (t) { return !t.deleted; }).length + ' tasks · rev ' + d.rev + ' · ' + CC.esc((LIB.CASE_TYPES[d.caseType] || {}).label || '') + '</small></button>'; }).join('') : 'No client files yet.';
+      renderRepoShare();
+    }).catch(function (e) { $('repoClients').textContent = 'Could not reach GitHub (' + e.message + ').'; });
+  }
+  $('repoClients').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-repo]'); if (!b) return;
+    var f = repoFiles[b.getAttribute('data-repo')], ex = store.drafts[f.id];
+    if (ex && !ex.fromRepo && !confirm('A local draft with this id exists. Replace it with the repo version?')) return;
+    store.drafts[f.id] = CC.fileToDraft(f); store.currentId = f.id; save(); renderForm();
+  });
+  $('repoRefresh').onclick = loadRepoClients;
+  $('exportJson').onclick = function () {
+    var d = cur(), file = CC.draftToFile(d, d.repoFile || null);
+    CC.download(d.id + '.json', JSON.stringify(file, null, 2) + '\n', 'application/json');
+    toast('Downloaded ' + d.id + '.json — commit it to data/clients/');
+  };
+  function renderRepoShare() {
+    var d = cur(), on = !!(d.fromRepo || repoFiles[d.id]);
+    $('repoShare').classList.toggle('hidden', !on);
+    if (on) { var l = new URL('client.html?c=' + d.id, location.href).href; $('repoLinkText').textContent = l; $('openRepoLink').href = l; $('copyRepoLink').onclick = function () { CC.copyText(l).then(function () { toast('Link copied'); }); }; }
   }
 
   function sig(d) { return JSON.stringify(toPayload(Object.assign({}, d, { rev: 0 }))); }
@@ -235,6 +267,6 @@
     el.textContent = msg; el.classList.remove('hidden'); clearTimeout(tt); tt = setTimeout(function () { el.classList.add('hidden'); }, 2500);
   }
 
-  renderDrafts(); renderForm();
+  renderDrafts(); renderForm(); loadRepoClients();
   window.__attorney = { store: function () { return store; }, linkFor: linkFor, toPayload: toPayload };
 })();

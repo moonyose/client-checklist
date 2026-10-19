@@ -10,7 +10,7 @@
 <body>
 <header class="a-top">
   <span class="logo">Client Checklist</span>
-  <span class="proto">Prototype · local only · all task templates are examples to review</span>
+  <span class="proto">Prototype · optional editor — your AI assistant can edit client files directly · templates are examples to review</span>
   <span class="grow"></span>
   <a class="btn small" href="README.md" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.35)">How it works</a>
 </header>
@@ -23,6 +23,9 @@
     <button class="btn small block" id="newDraft" style="margin-top:.5rem">+ New checklist</button>
     <button class="btn small ghost block" id="resetExample" style="margin-top:.25rem">Restore “Maria Example”</button>
     <p class="small muted" style="margin-top:1rem">Drafts are saved automatically in this browser only.</p>
+    <div class="row" style="justify-content:space-between;margin:1.25rem 0 .4rem"><h2 style="margin:0">In the repo</h2><button class="btn small ghost" id="repoRefresh" title="Reload from GitHub">↻</button></div>
+    <p class="small muted" style="margin:0 0 .4rem">Client files your AI assistant maintains (<code>data/clients/*.json</code>). Click one to view or edit it here.</p>
+    <div id="repoClients" class="small muted">Loading…</div>
   </aside>
 
   <!-- Main -->
@@ -84,7 +87,13 @@
   <aside class="a-right">
     <div class="card" id="shareCard">
       <h2>5 · Share with client</h2>
+      <div id="repoShare" class="hidden" style="margin-bottom:.6rem">
+        <div class="small muted">Repo link (always reads the latest file):</div>
+        <div class="linkbox" id="repoLinkText"></div>
+        <div class="row" style="margin-top:.4rem"><button class="btn small" id="copyRepoLink">Copy</button><a class="btn small" id="openRepoLink" target="_blank" rel="noopener">Open</a></div>
+      </div>
       <button class="btn primary block" id="genLink">Generate client link</button>
+      <button class="btn small block" id="exportJson" style="margin-top:.4rem" title="Save as data/clients/&lt;id&gt;.json and commit it">Download repo JSON file</button>
       <div id="linkOut" class="hidden" style="margin-top:.6rem">
         <div class="linkbox" id="linkText"></div>
         <div class="row" style="margin-top:.5rem">
@@ -114,6 +123,7 @@
 <footer class="small muted" style="text-align:center;padding:1rem 0 2rem">Prototype - example templates, not legal advice</footer>
 
 <script src="vendor/lz-string.min.js"></script>
+<script src="js/config.js"></script>
 <script src="js/library.js"></script>
 <script src="js/common.js"></script>
 <script src="js/parse.js"></script>

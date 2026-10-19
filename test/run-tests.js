@@ -10,12 +10,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 (async () => {
   const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: 'new',
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--lang=en-US'], userDataDir: fs.mkdtempSync('/tmp/cc-profile-') });
+    args: ['--no-sandbox', '--disable-dev-shm-usage', '--lang=en-US'], protocolTimeout: 20000, userDataDir: fs.mkdtempSync('/tmp/cc-profile-') });
   const errors = [];
   async function newPage(w, h, mobile) {
     const p = await browser.newPage();
     await p.setViewport({ width: w, height: h, deviceScaleFactor: mobile ? 2 : 1, isMobile: !!mobile, hasTouch: !!mobile });
-    p.on('pageerror', e => errors.push(e.message)); p.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+    p.on('pageerror', e => errors.push(e.message)); p.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });
+    p.on('response', r => { if (r.status() >= 400 && !/api\.github\.com|raw\.githubusercontent\.com/.test(r.url())) errors.push(r.status() + ' ' + r.url()); });
     return p;
   }
   const clickText = async (p, sel, re) => { const els = await p.$$(sel); for (const e of els) { const t = await e.evaluate(n => n.textContent); if (re.test(t)) { await e.click(); return true; } } return false; };
@@ -183,6 +184,27 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const link3 = await a.$eval('#linkText', e => e.textContent);
   await fresh(link3);
   ok(!(await activeTitles()).some(t => /Photos of you together/.test(t)) && (await doneTitles()).length === 2, 'v3 with a removed task: task drops, done tasks stay done');
+
+  // Repo-backed client file (?c=<checklistId>)
+  console.log('Repo data file (?c=)');
+  await c.bringToFront();
+  const REPO_URL = BASE + 'client.html?c=cl_maria_example';
+  await fresh(REPO_URL);
+  ok(/Hola Maria/.test(await c.$eval('.hello h1', e => e.textContent)) && (await activeTitles()).length === 11, '?c=cl_maria_example loads the repo file (11 tasks, Spanish) via ' + await c.evaluate(() => window.__loadedVia));
+const church = await findAcc(/iglesia/);
+  ok(!!church, 'custom agent-written email task renders (' + (church || {}).title + ')');
+  await expand(/iglesia/);
+  await c.type(P(church.id) + ' input[data-field=spouseName]', 'Juan Example');
+  ok(/Solicitud de carta/.test(decodeURIComponent(await c.$eval(P(church.id) + ' .mailtoBtn', e => e.getAttribute('href')))), 'custom email: Spanish draft + mailto');
+  await c.click(P(church.id) + ' .act-done'); await sleep(150);
+  await c.reload({ waitUntil: 'networkidle0' });
+  ok((await doneTitles()).some(t => /iglesia/.test(t)), 'repo checklist: check-off survives refresh');
+  await a.bringToFront(); await a.reload({ waitUntil: 'networkidle0' }); await sleep(1500);
+  ok(/Maria Example/.test(await a.$eval('#repoClients', e => e.textContent)), 'attorney view lists repo client files');
+  await a.click('#repoClients [data-repo=cl_maria_example]');
+  ok(await a.$eval('#clientName', e => e.value) === 'Maria Example' && (await a.$$('#tasks .task-item')).length === 11 && /client\.html\?c=cl_maria_example/.test(await a.$eval('#repoLinkText', e => e.textContent)), 'repo file opens in the editor with its ?c= link');
+  await c.bringToFront();
+  await fresh(link3);
 
   // ICS download
   console.log('Calendar reminder (.ics)');

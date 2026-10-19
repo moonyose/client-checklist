@@ -61,22 +61,41 @@
   };
   var ICON = { doc: '📄', email: '✉️', phone: '📞', online: '🌐', custom: '📝' };
 
-  /* ---------------- load checklist (never touches done-state) ---------------- */
-  var incoming = CC.readHashPayload(), list = null, notices = [];
-  if (incoming) {
-    var stored = CC.lsGet(NS + 'list.' + incoming.id, null);
-    if (stored && (stored.rev || 0) > (incoming.rev || 0)) { list = stored; notices.push('olderLink'); }
-    else { list = incoming; CC.lsSet(NS + 'list.' + list.id, list); }
-  }
+  /* ---------------- load checklist (never touches done-state) ----------------
+   * Sources: client.html?c=<checklistId>  -> data/clients/<id>.json read fresh from the repo (GitHub API, no cache)
+   *          client.html#d=<compressed>   -> prototype hash link (fallback, works offline / without a repo)
+   * Either way, the newest version seen is cached; progress lives separately (see setDone). */
+  var app = $('app');
+  var params = new URLSearchParams(location.search);
+  var repoId = params.get('c');
   window.addEventListener('hashchange', function () { location.reload(); });
 
-  var app = $('app');
-  if (!list) {
-    renderLang('en');
+  function showBad() {
+    document.documentElement.lang = 'en';
     app.innerHTML = '<div class="card" style="margin-top:1rem"><h1>' + S.en.badLink + '</h1><p>' + S.en.badLinkTxt + '</p><hr><h1>' + S.es.badLink + '</h1><p>' + S.es.badLinkTxt + '</p></div>';
-    return;
+  }
+  function pick(incoming, notices, noticeIfOlder) {
+    var stored = CC.lsGet(NS + 'list.' + incoming.id, null);
+    if (stored && (stored.rev || 0) > (incoming.rev || 0)) { if (noticeIfOlder) notices.push('olderLink'); return stored; }
+    CC.lsSet(NS + 'list.' + incoming.id, incoming); return incoming;
   }
 
+  if (repoId && /^cl_[a-z0-9_]+$/.test(repoId)) {
+    app.innerHTML = '<p class="muted" id="loading" style="margin-top:2rem;text-align:center">…</p>';
+    CC.fetchRepoJSON(window.CC_CONFIG.dataDir + '/' + repoId + '.json').then(function (res) {
+      var pl = CC.fileToPayload(res.data); if (!pl || pl.id !== repoId) throw new Error('bad file');
+      window.__loadedVia = res.via;
+      var notices = []; boot(pick(pl, notices, false), notices);
+    }).catch(function () {
+      var cached = CC.lsGet(NS + 'list.' + repoId, null);   // offline / rate-limited: last version we saw
+      if (cached) { window.__loadedVia = 'cache'; boot(cached, []); } else showBad();
+    });
+  } else {
+    var incoming = CC.readHashPayload();
+    if (incoming) { var nts = []; boot(pick(incoming, nts, true), nts); } else showBad();
+  }
+
+  function boot(list, notices) {
   var CID = list.id;
   var K = { done: NS + 'done.' + CID, fields: NS + 'fields.' + CID, lang: NS + 'lang.' + CID, seen: NS + 'seen.' + CID, view: NS + 'view.' + CID };
   var doneMap = CC.lsGet(K.done, {});          // { taskId: {done, doneAt, updatedAt} }
@@ -89,7 +108,7 @@
   // Which task is expanded (one at a time). Deep links: #d=…&t=<taskId> (or the old per-screen view key) open
   // the list with that task expanded. On refresh, the last expanded task stays open.
   var nav = (performance.getEntriesByType && performance.getEntriesByType('navigation')[0]) || {};
-  var hashTask = (/[#&]t=([^&]+)/.exec(location.hash) || [])[1] || null;
+  var hashTask = (/[#&]t=([^&]+)/.exec(location.hash) || [])[1] || params.get('t') || null;
   var legacyView = sessionStorage.getItem(K.view);
   var expanded = hashTask || (nav.type === 'reload' ? sessionStorage.getItem(K.view + '.exp') : null) ||
                  (legacyView && legacyView !== 'overview' ? legacyView : null);
@@ -97,7 +116,7 @@
   sessionStorage.removeItem(K.view);
 
   function T(key, vars) { var s = (S[lang][key] || S.en[key] || key); Object.keys(vars || {}).forEach(function (k) { s = s.split('{' + k + '}').join(vars[k]); }); return s; }
-  function tr(o) { return o ? (o[lang] || o.en || '') : ''; }
+  function tr(o) { return !o ? '' : (typeof o === 'string' ? o : (o[lang] || o.en || '')); }
   function isDone(t) { return !!(doneMap[t.id] && doneMap[t.id].done); }
   function setDone(t, val) {
     // Re-read before writing so another open tab's changes are not lost.
@@ -108,9 +127,10 @@
   }
   window.addEventListener('storage', function (e) { if (e.key === K.done) { doneMap = CC.lsGet(K.done, {}); render(); } });
 
-  function item(t) { return LIB.byId[t.i] || null; }
+  // Library task, or a custom task the attorney's AI wrote with full content (same shape as a library item).
+  function item(t) { if (LIB.byId[t.i]) return LIB.byId[t.i]; var cu = t.cu; return cu && cu.type && cu.type !== 'custom' && LIB.TYPES[cu.type] ? cu : null; }
   function typeOf(t) { var it = item(t); return it ? it.type : 'custom'; }
-  function title(t) { var it = item(t); return it ? tr(it.title) : (t.ti || 'Task'); }
+  function title(t) { var it = item(t); return (it && tr(it.title)) || t.ti || tr(t.cu && t.cu.title) || 'Task'; }
   function sortKey(t) { return t.d || '9999-12-31'; }
   function openTasks() { return tasks.filter(function (t) { return !isDone(t); }).map(function (t, i) { return [t, i]; })
     .sort(function (a, b) { return sortKey(a[0]).localeCompare(sortKey(b[0])) || a[1] - b[1]; }).map(function (x) { return x[0]; }); }
@@ -237,9 +257,9 @@
     var h = '<div class="panel-in">';
     if (t.n) h += '<section class="att-note"><b>' + T('fromAtt') + ':</b> ' + CC.esc(t.n) + '</section>';
     if (!it) {
-      h += '<section><p style="white-space:pre-wrap;margin:0">' + CC.esc(t.tx || '') + '</p></section>';
+      h += '<section><p style="white-space:pre-wrap;margin:0">' + CC.esc(t.tx || tr(t.cu && (t.cu.text || t.cu.summary)) || '') + '</p></section>';
     } else {
-      h += '<section><p style="margin:0">' + CC.esc(tr(it.summary)) + '</p></section>';
+      if (it.summary) h += '<section><p style="margin:0">' + CC.esc(tr(it.summary)) + '</p></section>';
       var keys = (it.fields || []).slice();
       [it.subject, it.body].forEach(function (x) { if (x) CC.fieldsIn(tr(x)).forEach(function (k) { if (keys.indexOf(k) < 0) keys.push(k); }); });
       if (ty === 'doc') {
@@ -258,18 +278,18 @@
         var num = it.phone || (t.o && t.o.phone ? '+1' + t.o.phone.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '') : '');
         var disp = it.phoneDisplay || (t.o && t.o.phone) || '';
         h += '<section>' + (num ? '<a class="callbtn" href="tel:' + num + '"><small>📞 ' + T('call') + '</small>' + CC.esc(disp) + '</a>' : '<div class="notice">' + T('noNumber') + '</div>') + '</section>';
-        h += '<section><h4>' + T('hours') + '</h4><p style="margin:0">' + CC.esc(tr(it.hours)) + '</p></section>';
+        if (it.hours) h += '<section><h4>' + T('hours') + '</h4><p style="margin:0">' + CC.esc(tr(it.hours)) + '</p></section>';
         h += '<section><h4>' + T('haveReady') + '</h4>' + listHTML(it.haveReady, true, 'ready') + '</section>';
-        h += '<section><h4>' + T('script') + '</h4><ol class="script">' + olHTML(it.script) + '</ol></section>';
+        h += '<section><h4>' + T('script') + '</h4><ol class="script">' + olHTML(it.script || []) + '</ol></section>';
         h += fieldsHTML(t, keys);
       }
       if (ty === 'online') {
-        h += '<section><a class="btn primary block" href="' + it.url + '" target="_blank" rel="noopener noreferrer">🌐 ' + T('openSite') + '</a><p class="small muted" style="margin:.3rem 0 0;word-break:break-all">' + CC.esc(it.url) + '</p></section>';
-        h += '<section><h4>' + T('steps') + '</h4><ol class="steps">' + olHTML(it.steps) + '</ol></section>';
+        if (it.url && /^https?:\/\//.test(it.url)) h += '<section><a class="btn primary block" href="' + CC.esc(it.url) + '" target="_blank" rel="noopener noreferrer">🌐 ' + T('openSite') + '</a><p class="small muted" style="margin:.3rem 0 0;word-break:break-all">' + CC.esc(it.url) + '</p></section>';
+        h += '<section><h4>' + T('steps') + '</h4><ol class="steps">' + olHTML(it.steps || []) + '</ol></section>';
         h += fieldsHTML(t, keys);
       }
       if (it.tips && it.tips.length) h += '<section><h4>' + T('tips') + '</h4>' + listHTML(it.tips) + '</section>';
-      if (it.links && it.links.length) h += '<section><h4>' + T('links') + '</h4><ul>' + it.links.map(function (l) { return '<li><a href="' + l.url + '" target="_blank" rel="noopener noreferrer">' + CC.esc(tr(l.label)) + '</a></li>'; }).join('') + '</ul></section>';
+      if (it.links && it.links.length) h += '<section><h4>' + T('links') + '</h4><ul>' + it.links.filter(function (l) { return /^https?:\/\//.test(l.url); }).map(function (l) { return '<li><a href="' + l.url + '" target="_blank" rel="noopener noreferrer">' + CC.esc(tr(l.label)) + '</a></li>'; }).join('') + '</ul></section>';
     }
     h += '<div class="acc-actions">' + (done
       ? '<button class="btn act-reopen">' + T('reopen') + '</button>'
@@ -311,8 +331,8 @@
       q('.emailBody').innerHTML = CC.fillHTML(tr(it.body), fields, lang);
       var e = emailParts(t); q('.mailtoBtn').href = CC.buildMailto(e.to, e.subject, e.body);
     }
-    if (q('.script') && it.script) q('.script').innerHTML = olHTML(it.script);
-    if (q('.steps') && it.steps) q('.steps').innerHTML = olHTML(it.steps);
+    if (q('.script') && it.script) q('.script').innerHTML = olHTML(it.script || []);
+    if (q('.steps') && it.steps) q('.steps').innerHTML = olHTML(it.steps || []);
     if (q('.ready') && it.haveReady) q('.ready').querySelectorAll('li span').forEach(function (sp, i) { sp.innerHTML = CC.fillHTML(tr(it.haveReady[i]), fields, lang); });
   }
 
@@ -346,5 +366,6 @@
   });
 
   render();
-  window.__client = { expanded: function () { return expanded; }, doneMap: function () { return CC.lsGet(K.done, {}); }, list: list, checklistId: CID };
+  window.__client = { source: repoId ? 'repo' : 'hash', expanded: function () { return expanded; }, doneMap: function () { return CC.lsGet(K.done, {}); }, list: list, checklistId: CID };
+  }
 })();

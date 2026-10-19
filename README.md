@@ -8,6 +8,20 @@ online requests. English and Spanish.
 > **Prototype.** Static site (runs locally or on GitHub Pages). No backend, no accounts, nothing stored on a server, no real client data.
 > **Every task template is an example.** The attorney must review the wording before sending it to a client. Not legal advice.
 
+## Two ways to make a checklist
+1. **Dictate to an AI assistant (main path).** The attorney tells her own AI assistant (a Claude Project or a Grok Bot)
+   *"Maria needs her birth certificate and tax transcripts by Nov 15"*. The assistant edits that client's file
+   `data/clients/<checklistId>.json` in this repo, commits, and replies with the client link
+   `client.html?c=<checklistId>`. The client page reads the file **fresh from the GitHub API on every load** (cache-busted,
+   not the Pages copy), so changes show up seconds after the commit. Instructions for the assistant, plus a copy-paste
+   system prompt, are in **`AGENTS.md`**. The schema is `schema/client-checklist.schema.json`, and the validator is `node scripts/cc.mjs validate`
+   (it also runs as a GitHub Action on every push).
+2. **Attorney view (optional).** `index.html` lists every client file in the repo for viewing and manual editing ("Download repo JSON
+   file" exports an edit to commit). It also keeps local drafts and can generate the older self-contained `#d=` hash links,
+   which still work as a fallback.
+
+Live example: https://moonyose.github.io/client-checklist/client.html?c=cl_maria_example
+
 ## Run it
 
 ```bash
@@ -47,7 +61,17 @@ Spanish). Click **Generate client link → Open client view** to see what she wo
 on the left survives refreshes and restarts. Each checklist has a stable `checklistId` (`cl_…`) and each
 task a stable `taskId` (`tk_…`), and both are created once and never regenerated.
 
-### The link
+### Repo-backed links (`client.html?c=<checklistId>`)
+* The file `data/clients/<checklistId>.json` is the source of truth for the *assignment* (tasks, due dates, notes). It has a stable
+  checklist id and stable task ids, `updatedAt` per task, `rev`, and tombstones (`"deleted": true`) for removed tasks.
+* It's loaded fresh from the GitHub contents API (`Accept: application/vnd.github.raw+json`, `?t=<now>`, `cache: no-store`). If that's
+  unavailable (rate limit: 60 unauthenticated requests/hour per IP), it falls back to raw.githubusercontent.com, then the Pages copy, then the
+  last version cached on the device. A stale copy with a lower `rev` never replaces a newer cached one.
+* It merges with the client's local done-state by task id, exactly like hash links: check-offs never reappear, new tasks show up open,
+  and tombstoned or removed tasks drop.
+* `&t=<taskId>` (query or hash) opens the list with that task expanded.
+
+### Hash links (fallback)
 `client.html#d=<LZ-string compressed JSON>`. The payload carries only the checklist definition
 (ids, library item ids, due dates, notes, recipient overrides, attorney contact, reminder prefs) and never
 any client progress. The library text itself ships with the app, so links stay short (~1–1.5k characters for
@@ -122,13 +146,21 @@ css/styles.css        shared styles (calm navy/teal, system fonts)
 js/library.js         task library (EN/ES), case-type presets, fill-in field labels, verified sources
 js/common.js          link encode/decode, dates, template fill, mailto, storage, .ics builder
 js/parse.js           type/dictate → tasks parser
-js/attorney.js        attorney view logic (drafts persistence, link generation)
+js/attorney.js        attorney view logic (drafts persistence, link generation, repo client list)
+js/config.js          which GitHub repo/branch holds the client files (auto-detected on *.github.io)
+data/clients/*.json   one file per client checklist (EXAMPLE DATA ONLY). index.json is a convenience index
+data/library.json     task library exported for AI assistants (node scripts/cc.mjs export-library)
+schema/               JSON Schema for client files
+scripts/cc.mjs        agent CLI: new / dictate / add / add-custom / edit / remove / validate / list / link
+AGENTS.md             instructions + copy-paste system prompt for the attorney's AI assistant
+.github/workflows/validate.yml  validates client files on every push
 js/client.js          client view logic (walkthrough, done-state, merge, reminders)
 vendor/lz-string.min.js  LZ-String 1.5 (MIT), vendored so it works offline
 serve.sh              local static server (port 8437)
 REMINDERS.md          design doc for real reminders + backend + cost estimate
 shots/                screenshots + a sample .ics from the test run
-test/run-tests.js     headless Chrome end-to-end tests (58 checks)
+test/run-tests.js     headless Chrome end-to-end tests (64 checks)
+test/agent-e2e.sh     live end-to-end test acting as the attorney's AI (commits to the repo)
 test/validate_ics.py  parses the downloaded .ics with icalendar + dateutil and expands the RRULE
 test/fileurl-smoke.js checks the app also works from file://
 ```
@@ -141,6 +173,7 @@ node run-tests.js && node fileurl-smoke.js
 ```
 
 ## Limitations (prototype only)
+* **This repo is public, so it can only hold example data.** Real client checklists need a private store (see below and `REMINDERS.md`).
 * **The hash-link approach is a prototype technique only.** Anyone who has the link can read the checklist (the
   client's first name, case type, task list, notes). Links get forwarded, synced, and stored in browser
   history. Immigration data is sensitive, so the real version needs a backend with authentication,
@@ -155,6 +188,11 @@ node run-tests.js && node fileurl-smoke.js
 * The templates have not had legal review.
 
 ## Suggested next steps for a real version
+0. **Private data store that her AI can write to.** A public repo can't hold real client data. Production moves the client files into a
+   private store (e.g. Supabase Postgres with row-level security) that holds the same schema. Each client gets an unguessable per-client
+   secret link (`/c/<token>`, revocable and expiring), and her assistant writes through an **MCP connector** (tools like `list_clients`,
+   `get_checklist`, `add_tasks`, `edit_task`, `remove_task`, `get_client_link`) or an authenticated API scoped to her firm. The daily reminder
+   job reads the same store. Details are in `REMINDERS.md`.
 1. **Backend + accounts.** Attorney login (with MFA), a per-client secret link or magic-link login, data
    encrypted at rest and in transit, row-level access control, and audit logs. A concrete option is **Supabase**
    (Postgres + Auth + row-level security + scheduled jobs). The free tier is fine for building, and **Pro ($25/mo)** is

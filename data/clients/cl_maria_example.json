@@ -1,0 +1,145 @@
+{
+  "$schema": "../../schema/client-checklist.schema.json",
+  "schemaVersion": 1,
+  "id": "cl_maria_example",
+  "rev": 1,
+  "createdAt": "2026-10-19T17:30:00.000Z",
+  "updatedAt": "2026-10-19T17:30:00.000Z",
+  "client": {
+    "name": "Maria Example",
+    "language": "es"
+  },
+  "caseType": "family_gc",
+  "message": "These are the things we need from you for your green card case. Take them one at a time — you can do this. Call us with any question.",
+  "attorney": {
+    "name": "Example Immigration Law Office",
+    "phone": "(555) 555-0100",
+    "email": "office@example.com"
+  },
+  "reminders": {
+    "email": true,
+    "sms": true,
+    "emailAddr": "",
+    "phone": "",
+    "time": "18:00"
+  },
+  "tasks": [
+    {
+      "id": "tk_maria_birth_cert",
+      "library": "birth_cert",
+      "due": "2026-10-30",
+      "createdAt": "2026-10-19T17:30:00.000Z",
+      "updatedAt": "2026-10-19T17:30:00.000Z"
+    },
+    {
+      "id": "tk_maria_passport_copy",
+      "library": "passport_copy",
+      "due": "2026-10-23",
+      "createdAt": "2026-10-19T17:30:00.000Z",
+      "updatedAt": "2026-10-19T17:30:00.000Z"
+    },
+    {
+      "id": "tk_maria_marriage_cert",
+      "library": "marriage_cert",
+      "due": "2026-10-27",
+      "createdAt": "2026-10-19T17:30:00.000Z",
+      "updatedAt": "2026-10-19T17:30:00.000Z"
+    },
+    {
+      "id": "tk_maria_joint_financial",
+      "library": "joint_financial",
+      "due": "2026-11-02",
+      "createdAt": "2026-10-19T17:30:00.000Z",
+      "updatedAt": "2026-10-19T17:30:00.000Z"
+    },
+    {
+      "id": "tk_maria_relationship_photos",
+      "library": "relationship_photos",
+      "due": "2026-11-02",
+      "createdAt": "2026-10-19T17:30:00.000Z",
+      "updatedAt": "2026-10-19T17:30:00.000Z"
+    },
+    {
+      "id": "tk_maria_employment_letter",
+      "library": "employment_letter",
+      "overrides": {
+        "toName": "HR – ACME Corp (example)",
+        "to": "hr@example.com"
+      },
+      "due": "2026-10-26",
+      "createdAt": "2026-10-19T17:30:00.000Z",
+      "updatedAt": "2026-10-19T17:30:00.000Z"
+    },
+    {
+      "id": "tk_maria_affidavit_request",
+      "library": "affidavit_request",
+      "due": "2026-11-09",
+      "createdAt": "2026-10-19T17:30:00.000Z",
+      "updatedAt": "2026-10-19T17:30:00.000Z"
+    },
+    {
+      "id": "tk_maria_irs_transcript_phone",
+      "library": "irs_transcript_phone",
+      "note": "We need 2023, 2024 and 2025.",
+      "due": "2026-10-22",
+      "createdAt": "2026-10-19T17:30:00.000Z",
+      "updatedAt": "2026-10-19T17:30:00.000Z"
+    },
+    {
+      "id": "tk_maria_police_certificate",
+      "library": "police_certificate",
+      "due": "2026-11-18",
+      "createdAt": "2026-10-19T17:30:00.000Z",
+      "updatedAt": "2026-10-19T17:30:00.000Z"
+    },
+    {
+      "id": "tk_maria_passport_photos",
+      "library": "passport_photos",
+      "due": "2026-11-09",
+      "createdAt": "2026-10-19T17:30:00.000Z",
+      "updatedAt": "2026-10-19T17:30:00.000Z"
+    },
+    {
+      "id": "tk_maria_church_letter",
+      "library": null,
+      "title": "Carta de membresía de su iglesia",
+      "custom": {
+        "type": "email",
+        "title": {
+          "en": "Ask your church for a membership letter",
+          "es": "Pida una carta de membresía a su iglesia"
+        },
+        "summary": {
+          "en": "A short signed letter from your pastor saying you and your spouse attend together.",
+          "es": "Una carta corta firmada por su pastor que diga que usted y su cónyuge asisten juntos."
+        },
+        "toLabel": {
+          "en": "Your church office or pastor",
+          "es": "La oficina de su iglesia o su pastor"
+        },
+        "fields": [
+          "fullName",
+          "spouseName",
+          "phone"
+        ],
+        "subject": {
+          "en": "Letter request – {{fullName}} and {{spouseName}}",
+          "es": "Solicitud de carta – {{fullName}} y {{spouseName}}"
+        },
+        "body": {
+          "en": "Hello Pastor,\n\nI hope you are well. {{spouseName}} and I are working on my immigration case, and a short letter from the church would help us a lot.\n\nCould you please write a signed letter on church letterhead that says:\n- That {{fullName}} and {{spouseName}} attend the church together\n- Since when we have been members or attending\n- Your name, title, and a phone number\n\nThank you very much!\n\n{{fullName}}\n{{phone}}",
+          "es": "Hola Pastor:\n\nEspero que esté bien. {{spouseName}} y yo estamos trabajando en mi caso de inmigración, y una carta corta de la iglesia nos ayudaría mucho.\n\n¿Podría escribir una carta firmada con el membrete de la iglesia que diga:\n- Que {{fullName}} y {{spouseName}} asisten juntos a la iglesia\n- Desde cuándo somos miembros o asistimos\n- Su nombre, cargo y un número de teléfono\n\n¡Muchas gracias!\n\n{{fullName}}\n{{phone}}"
+        },
+        "tips": [
+          {
+            "en": "Ask whether the letter can be in English; if not, tell your attorney so it can be translated.",
+            "es": "Pregunte si la carta puede estar en inglés; si no, avise a su abogada para traducirla."
+          }
+        ]
+      },
+      "due": "2026-11-09",
+      "createdAt": "2026-10-19T17:30:00.000Z",
+      "updatedAt": "2026-10-19T17:30:00.000Z"
+    }
+  ]
+}

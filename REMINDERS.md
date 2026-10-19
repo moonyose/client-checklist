@@ -11,6 +11,22 @@ picked, until everything is done. Check-offs sync to the attorney, and reminders
 * Progress is stored **only on the client's device** (`localStorage`, keyed by checklistId + taskId). It survives
   refreshes, but not switching phones, and the attorney can't see it.
 
+## The real-version path from the AI-assistant prototype
+Today the attorney's AI assistant commits `data/clients/<id>.json` to a **public** GitHub repo, and the client page reads it fresh
+through the GitHub API. That's fine for example data only. Production keeps the same shape but moves it somewhere private:
+
+1. **Private store.** The same checklist/task schema goes into Supabase Postgres (tables below), with RLS so a firm sees only its clients.
+2. **Per-client secret links.** `https://…/c/<token>` with a long random token (only its hash is stored), revocable and expiring. The
+   page calls an Edge Function with the token to read the checklist and write task state. No GitHub, nothing public.
+3. **A way for her AI to write.** Either:
+   * an **MCP server** (a remote MCP connector added to her Claude or Grok Bot) exposing `list_clients`, `get_checklist`,
+     `create_client`, `add_tasks`, `edit_task`, `remove_task` (tombstone), and `get_client_link`. It authenticates as her (OAuth), every
+     call is audited, and it applies the same rules as `AGENTS.md` (stable ids, per-task `updatedAt`, `rev`+1, validation against the schema); or
+   * an **authenticated REST API** (per-attorney API key or OAuth) for assistants that can make HTTP calls.
+   `scripts/cc.mjs` and `schema/client-checklist.schema.json` carry over as the server-side validation.
+4. **The daily reminder job reads the same store** (below), so a new task from her dictation is in tomorrow's nudge, and a check-off
+   on the client's phone stops it.
+
 ## Architecture (recommended: Supabase)
 Supabase gives Postgres, Auth, row-level security (RLS), Edge Functions, and scheduled jobs (Supabase Cron /
 `pg_cron`) in one hosted service. The **Free** plan works for development, but free projects pause after a week of

@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonyose.github.io/client-checklist/schema/client-checklist.schema.json",
+  "title": "Client checklist (one file per client: data/clients/<id>.json)",
+  "description": "Source of truth for one client's to-do list. EXAMPLE DATA ONLY in this public repo. Client progress (done/undone) is NOT stored here; it lives on the client's device in the prototype.",
+  "type": "object",
+  "required": ["schemaVersion", "id", "rev", "createdAt", "updatedAt", "client", "caseType", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "pattern": "^cl_[a-z0-9_]{4,40}$", "description": "Stable checklist id. Never change it. File name must be <id>.json." },
+    "rev": { "type": "integer", "minimum": 1, "description": "Increase by 1 on every change." },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "client": {
+      "type": "object", "required": ["name", "language"], "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 80, "description": "First name / display name only. No real clients in the public repo." },
+        "language": { "enum": ["en", "es"] }
+      }
+    },
+    "caseType": { "enum": ["family_gc", "naturalization", "asylum", "daca", "other"] },
+    "message": { "type": "string", "maxLength": 600 },
+    "attorney": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "name": { "type": "string" }, "phone": { "type": "string" }, "email": { "type": "string" } }
+    },
+    "reminders": {
+      "type": "object", "additionalProperties": false,
+      "description": "Reminders: coming in the real version. Leave emailAddr/phone empty in the public repo.",
+      "properties": {
+        "email": { "type": "boolean" }, "sms": { "type": "boolean" },
+        "emailAddr": { "type": "string" }, "phone": { "type": "string" },
+        "time": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" }
+      }
+    },
+    "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } }
+  },
+  "$defs": {
+    "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "text": {
+      "description": "Plain string, or bilingual {en, es}.",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "object", "required": ["en"], "additionalProperties": false, "properties": { "en": { "type": "string" }, "es": { "type": "string" } } }
+      ]
+    },
+    "textList": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+    "task": {
+      "type": "object",
+      "required": ["id", "library", "createdAt", "updatedAt"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^tk_[a-z0-9_]{4,40}$", "description": "Stable task id. Never reuse or change." },
+        "library": { "type": ["string", "null"], "description": "A task id from data/library.json, or null for a custom task." },
+        "title": { "type": "string", "description": "Custom tasks: short title shown in the list (client's language)." },
+        "text": { "type": "string", "description": "Custom tasks: plain instructions." },
+        "custom": { "$ref": "#/$defs/customItem" },
+        "due": { "$ref": "#/$defs/date" },
+        "note": { "type": "string", "maxLength": 400, "description": "Shown as 'Note from your attorney'. No sensitive data." },
+        "overrides": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "to": { "type": "string", "description": "Email recipient for email tasks." },
+            "toName": { "type": "string" },
+            "phone": { "type": "string", "description": "Number to call for placeholder phone tasks." }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Set to now whenever this task changes." },
+        "deleted": { "type": "boolean", "description": "Tombstone: true = removed from the client's list. Keep the entry." }
+      },
+      "allOf": [
+        { "if": { "properties": { "library": { "type": "null" } } }, "then": { "anyOf": [ { "required": ["title"] }, { "required": ["custom"] } ] } }
+      ]
+    },
+    "customItem": {
+      "description": "Full task content written by the agent when nothing in the library fits. Same shape as a library item.",
+      "type": "object", "required": ["type", "title"], "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["doc", "email", "phone", "online", "custom"] },
+        "title": { "$ref": "#/$defs/text" }, "summary": { "$ref": "#/$defs/text" }, "text": { "$ref": "#/$defs/text" },
+        "where": { "$ref": "#/$defs/textList" }, "accepted": { "$ref": "#/$defs/textList" }, "tips": { "$ref": "#/$defs/textList" },
+        "toLabel": { "$ref": "#/$defs/text" }, "subject": { "$ref": "#/$defs/text" }, "body": { "$ref": "#/$defs/text" }, "bodyNote": { "$ref": "#/$defs/text" },
+        "fields": { "type": "array", "items": { "type": "string" } },
+        "phone": { "type": "string", "pattern": "^\\+\\d{8,15}$" }, "phoneDisplay": { "type": "string" },
+        "hours": { "$ref": "#/$defs/text" }, "haveReady": { "$ref": "#/$defs/textList" }, "script": { "$ref": "#/$defs/textList" },
+        "url": { "type": "string", "pattern": "^https://" }, "steps": { "$ref": "#/$defs/textList" },
+        "links": { "type": "array", "items": { "type": "object", "required": ["label", "url"], "properties": { "label": { "$ref": "#/$defs/text" }, "url": { "type": "string", "pattern": "^https://" }, "verified": { "type": "boolean" } } } },
+        "verified": { "type": "boolean" }, "source": { "type": "string" }, "placeholder": { "type": "boolean" }
+      }
+    }
+  }
+}

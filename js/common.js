@@ -137,3 +137,83 @@
     lsGet: lsGet, lsSet: lsSet, buildICS: buildICS, download: download, copyText: copyText
   };
 })(window);
+
+/* ---- Repo data files (data/clients/<checklistId>.json) ---- */
+(function (global) {
+  'use strict';
+  var CC = global.CC;
+  // Repo file  ->  internal payload used by the client view (same shape as hash links).
+  function fileToPayload(f) {
+    if (!f || !f.id || !Array.isArray(f.tasks)) return null;
+    return {
+      v: f.schemaVersion || 1, id: f.id, rev: f.rev || 0, updatedAt: f.updatedAt, src: 'repo',
+      c: (f.client && f.client.name) || '', l: (f.client && f.client.language) || 'en', ct: f.caseType, m: f.message || '',
+      a: f.attorney || {}, r: f.reminders || {},
+      t: f.tasks.filter(function (t) { return !t.deleted; }).map(function (t) {
+        var o = { id: t.id, i: t.library || 'custom' };
+        if (t.due) o.d = t.due; if (t.note) o.n = t.note; if (t.overrides) o.o = t.overrides;
+        if (!t.library) { o.ti = t.title || (t.custom && t.custom.title) || ''; if (t.text) o.tx = t.text; if (t.custom) o.cu = t.custom; }
+        return o;
+      })
+    };
+  }
+  // Attorney draft -> repo file
+  function draftToFile(d, prev) {
+    var now = new Date().toISOString(), prevTasks = {};
+    ((prev && prev.tasks) || []).forEach(function (t) { prevTasks[t.id] = t; });
+    var tasks = d.tasks.map(function (t) {
+      var out = { id: t.id, library: t.libId || null };
+      if (!t.libId) { out.title = t.title || ''; if (t.text) out.text = t.text; if (t.custom) out.custom = t.custom; }
+      if (t.due) out.due = t.due; if (t.note) out.note = t.note;
+      var ov = {}; Object.keys(t.o || {}).forEach(function (k) { if (t.o[k]) ov[k] = t.o[k]; }); if (Object.keys(ov).length) out.overrides = ov;
+      var p = prevTasks[t.id]; delete prevTasks[t.id];
+      var same = p && JSON.stringify(Object.assign({}, p, { createdAt: 0, updatedAt: 0 })) === JSON.stringify(Object.assign({}, out, { createdAt: 0, updatedAt: 0 }));
+      out.createdAt = (p && p.createdAt) || t.createdAt || now; out.updatedAt = same ? p.updatedAt : now;
+      return out;
+    });
+    Object.keys(prevTasks).forEach(function (id) { var p = prevTasks[id]; tasks.push(p.deleted ? p : Object.assign({}, p, { deleted: true, updatedAt: now })); });
+    return { $schema: '../../schema/client-checklist.schema.json', schemaVersion: 1, id: d.id, rev: (prev && prev.rev ? prev.rev + 1 : d.rev || 1),
+      createdAt: (prev && prev.createdAt) || d.createdAt, updatedAt: now,
+      client: { name: d.clientName, language: d.lang }, caseType: d.caseType, message: d.message || '',
+      attorney: d.attorney, reminders: d.reminders, tasks: tasks };
+  }
+  function fileToDraft(f) {
+    return { id: f.id, rev: f.rev || 0, createdAt: f.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(), fromRepo: true,
+      clientName: (f.client && f.client.name) || '', lang: (f.client && f.client.language) || 'en', caseType: f.caseType || 'other', message: f.message || '', defaultDue: '',
+      attorney: Object.assign({ name: '', phone: '', email: '' }, f.attorney || {}), reminders: Object.assign({ email: false, sms: false, emailAddr: '', phone: '', time: '09:00' }, f.reminders || {}),
+      tasks: f.tasks.filter(function (t) { return !t.deleted; }).map(function (t) { return { id: t.id, libId: t.library || null, due: t.due || '', note: t.note || '', o: Object.assign({}, t.overrides || {}), title: t.title || '', text: t.text || '', custom: t.custom || null, createdAt: t.createdAt }; }),
+      lastLink: null, lastLinkSig: null, repoFile: f };
+  }
+
+  // Fresh read of a repo file: GitHub API (no cache) -> raw.githubusercontent -> Pages copy. Returns {data, via}.
+  function fetchRepoJSON(path) {
+    var cfg = global.CC_CONFIG, t = Date.now();
+    var tries = [
+      { via: 'api', url: 'https://api.github.com/repos/' + cfg.owner + '/' + cfg.repo + '/contents/' + path + '?ref=' + encodeURIComponent(cfg.branch) + '&t=' + t, headers: { Accept: 'application/vnd.github.raw+json' } },
+      { via: 'raw', url: 'https://raw.githubusercontent.com/' + cfg.owner + '/' + cfg.repo + '/' + cfg.branch + '/' + path + '?t=' + t },
+      { via: 'pages', url: path + '?t=' + t }
+    ];
+    var i = 0;
+    function next(lastErr) {
+      if (i >= tries.length) return Promise.reject(lastErr || new Error('not found'));
+      var tr = tries[i++];
+      return fetch(tr.url, { cache: 'no-store', headers: tr.headers || {} }).then(function (r) {
+        if (!r.ok) throw new Error(tr.via + ' ' + r.status);
+        return r.json().then(function (data) { return { data: data, via: tr.via }; });
+      }).catch(next);
+    }
+    return next();
+  }
+  // Client files: GitHub directory listing (authoritative) -> data/clients/index.json (kept by scripts/cc.mjs).
+  function listRepoClients() {
+    var cfg = global.CC_CONFIG;
+    return fetch('https://api.github.com/repos/' + cfg.owner + '/' + cfg.repo + '/contents/' + cfg.dataDir + '?ref=' + cfg.branch + '&t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('list ' + r.status); return r.json(); })
+      .then(function (arr) { return arr.filter(function (x) { return /^cl_[a-z0-9_]+\.json$/.test(x.name); }).map(function (x) { return x.path; }); })
+      .catch(function () {
+        return fetchRepoJSON(cfg.dataDir + '/index.json').then(function (r) { return (r.data.clients || []).map(function (c) { return cfg.dataDir + '/' + c.id + '.json'; }); });
+      });
+  }
+  CC.fileToPayload = fileToPayload; CC.draftToFile = draftToFile; CC.fileToDraft = fileToDraft;
+  CC.fetchRepoJSON = fetchRepoJSON; CC.listRepoClients = listRepoClients;
+})(window);
