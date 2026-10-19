@@ -58,9 +58,12 @@ any client progress. The library text itself ships with the app, so links stay s
 * Mobile-first. Shows a greeting, the attorney's message, a progress bar, an **Up next** card, and the **To do**
   list sorted by due date. Due-date wording is gentle ("Due in 2 days, coming up soon", "Was due Oct 18.
   That's OK, please do it as soon as you can").
-* **One task at a time**, with **Mark as done / I have it** and **Skip for now** in a fixed bottom bar.
-  Marking a task done moves it to a **collapsed "Done" section** and opens the next one. **Undo** (toast) and
-  **Restore** (in Done) put a task back.
+* **Inline accordion list:** every task expands right in the list (one open at a time, chevron, `<button aria-expanded aria-controls>`).
+  Tap again to collapse. The first open task is labelled **Up next** and auto-expanded. Each panel has **Mark as done / I have it**
+  and **Skip** (skip collapses it and opens the next one). Marking done moves the task into the **collapsed "Done" section** and opens
+  the next task. Done items can also be expanded to review, with **Not done yet** to restore them. A toast offers **Undo**.
+  Deep links `client.html#d=…&t=<taskId>` (and the old per-task screen state) open the list with that task expanded. The
+  expanded task stays open on refresh.
 * **Email tasks** show the drafted email with live fill-in fields (name, employer, dates…). Blanks
   are highlighted until filled. There's an editable **To** field, **Copy email**, and **Open in my email app** (a `mailto:`
   link with URL-encoded subject/body and CRLF line breaks). Emails that go to employers, schools, courts, and county
@@ -125,7 +128,7 @@ vendor/lz-string.min.js  LZ-String 1.5 (MIT), vendored so it works offline
 serve.sh              local static server (port 8437)
 REMINDERS.md          design doc for real reminders + backend + cost estimate
 shots/                screenshots + a sample .ics from the test run
-test/run-tests.js     headless Chrome end-to-end tests (45 checks)
+test/run-tests.js     headless Chrome end-to-end tests (58 checks)
 test/validate_ics.py  parses the downloaded .ics with icalendar + dateutil and expands the RRULE
 test/fileurl-smoke.js checks the app also works from file://
 ```

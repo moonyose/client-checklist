@@ -86,9 +86,15 @@
   var tasks = list.t.filter(function (t) { return t.i === 'custom' || LIB.byId[t.i]; }); // removed tasks simply aren't in the link
   if (seen) { var nNew = tasks.filter(function (t) { return seen.indexOf(t.id) < 0; }).length; if (nNew) notices.push(['newTasks', nNew]); }
   CC.lsSet(K.seen, tasks.map(function (t) { return t.id; }));
-  // Restore the open task only on a refresh; opening the link fresh starts at the overview.
+  // Which task is expanded (one at a time). Deep links: #d=…&t=<taskId> (or the old per-screen view key) open
+  // the list with that task expanded. On refresh, the last expanded task stays open.
   var nav = (performance.getEntriesByType && performance.getEntriesByType('navigation')[0]) || {};
-  var view = (nav.type === 'reload' && sessionStorage.getItem(K.view)) || 'overview';
+  var hashTask = (/[#&]t=([^&]+)/.exec(location.hash) || [])[1] || null;
+  var legacyView = sessionStorage.getItem(K.view);
+  var expanded = hashTask || (nav.type === 'reload' ? sessionStorage.getItem(K.view + '.exp') : null) ||
+                 (legacyView && legacyView !== 'overview' ? legacyView : null);
+  var userCollapsed = false;   // true once the client closes everything on purpose
+  sessionStorage.removeItem(K.view);
 
   function T(key, vars) { var s = (S[lang][key] || S.en[key] || key); Object.keys(vars || {}).forEach(function (k) { s = s.split('{' + k + '}').join(vars[k]); }); return s; }
   function tr(o) { return o ? (o[lang] || o.en || '') : ''; }
@@ -129,25 +135,31 @@
     b.onclick = function () { lang = b.getAttribute('data-lang'); CC.lsSet(K.lang, lang); render(); };
   });
 
-  /* ---------------- views ---------------- */
-  function go(v) { view = v; sessionStorage.setItem(K.view, v); render(); window.scrollTo(0, 0); }
+  /* ---------------- views (single list with inline accordions) ---------------- */
+  function setExpanded(id) { expanded = id; if (id) sessionStorage.setItem(K.view + '.exp', id); else sessionStorage.removeItem(K.view + '.exp'); }
+  function byId(id) { return tasks.filter(function (x) { return x.id === id; })[0]; }
 
   function render() {
     renderLang(lang);
     $('firm').textContent = (list.a && list.a.name) || '';
     document.title = lang === 'es' ? 'Su lista' : 'Your checklist';
-    var t = view !== 'overview' && tasks.filter(function (x) { return x.id === view; })[0];
-    if (t) renderTask(t); else renderOverview();
+    if (expanded && !byId(expanded)) setExpanded(null);
+    if (!expanded && !userCollapsed) { var first = openTasks()[0]; if (first) setExpanded(first.id); }
+    renderOverview();
   }
 
-  function rowHTML(t) {
-    var di = dueInfo(t.d), ty = typeOf(t);
-    return '<button class="t-row" data-open="' + t.id + '"><span class="ic">' + ICON[ty] + '</span><span class="body"><b>' + CC.esc(title(t)) +
-      '</b><span class="due ' + di.cls + '">' + CC.esc(di.txt) + '</span></span><span class="chev">›</span></button>';
+  function accHTML(t, opts) {
+    var di = dueInfo(t.d), ty = typeOf(t), isOpen = expanded === t.id, pid = 'p_' + t.id;
+    return '<div class="acc' + (isOpen ? ' open' : '') + (opts.next ? ' next' : '') + (opts.done ? ' is-done' : '') + '" data-task="' + t.id + '">' +
+      '<h3 class="acc-h"><button class="acc-head" aria-expanded="' + isOpen + '" aria-controls="' + pid + '" id="h_' + t.id + '">' +
+      '<span class="ic">' + (opts.done ? '✅' : ICON[ty]) + '</span><span class="body">' +
+      (opts.next ? '<span class="upnext">' + T('next') + '</span>' : '') +
+      '<b>' + CC.esc(title(t)) + '</b><span class="due ' + (opts.done ? '' : di.cls) + '">' + CC.esc(opts.done ? tr(LIB.TYPES[ty]) : di.txt) + '</span></span>' +
+      '<span class="chev" aria-hidden="true">⌄</span></button></h3>' +
+      '<div class="acc-panel" id="' + pid + '" role="region" aria-labelledby="h_' + t.id + '"' + (isOpen ? '' : ' hidden') + '>' + (isOpen ? panelHTML(t) : '') + '</div></div>';
   }
 
   function renderOverview() {
-    $('bar').classList.add('hidden');
     var open = openTasks(), done = doneTasks(), total = tasks.length, pct = total ? Math.round(done.length / total * 100) : 0;
     var name = (list.c || '').split(' ')[0];
     var h = '';
@@ -156,16 +168,14 @@
     h += '<div style="margin:1rem 0"><div class="progress" role="progressbar" aria-valuenow="' + pct + '" aria-valuemin="0" aria-valuemax="100"><span style="width:' + pct + '%"></span></div>' +
          '<div class="small muted" id="progressText">' + T('progress', { done: done.length, total: total }) + '</div></div>';
     if (open.length) {
-      var nx = open[0], di = dueInfo(nx.d);
-      h += '<div class="card next-card"><div class="small muted">' + T('next') + '</div><h2 style="margin:.15rem 0">' + ICON[typeOf(nx)] + ' ' + CC.esc(title(nx)) + '</h2>' +
-           '<div class="due ' + di.cls + '" style="margin-bottom:.6rem">' + CC.esc(di.txt) + '</div><button class="btn primary block" data-open="' + nx.id + '">' + T('start') + '</button></div>';
-      h += '<h2 style="margin-top:1.25rem">' + T('open') + ' (' + open.length + ')</h2><div class="card" style="padding:.25rem .75rem" id="activeList">' + open.map(rowHTML).join('') + '</div>';
+      h += '<h2 style="margin-top:1rem">' + T('open') + ' (' + open.length + ')</h2><div class="acc-list" id="activeList">' +
+           open.map(function (t, i) { return accHTML(t, { next: i === 0 }); }).join('') + '</div>';
     } else {
       h += '<div class="card allset"><div class="big">🎉</div><h1>' + T('allDone') + '</h1><p>' + T('allDoneTxt') + '</p></div>';
     }
-    h += '<details class="done-sec" id="doneSec"' + (sessionStorage.getItem(K.view + '.doneOpen') === '1' ? ' open' : '') + '><summary>' + T('doneSec', { n: done.length }) + '</summary><div class="card" style="padding:.25rem .75rem">' +
-         (done.length ? done.map(function (t) { return '<div class="done-row" data-task="' + t.id + '"><span>✅</span><span class="tt">' + CC.esc(title(t)) + '</span><button class="btn small" data-restore="' + t.id + '">' + T('undo') + '</button></div>'; }).join('') : '<p class="muted small">—</p>') +
-         '</div></details>';
+    var doneOpen = sessionStorage.getItem(K.view + '.doneOpen') === '1' || (expanded && done.some(function (t) { return t.id === expanded; }));
+    h += '<details class="done-sec" id="doneSec"' + (doneOpen ? ' open' : '') + '><summary>' + T('doneSec', { n: done.length }) + '</summary><div class="acc-list" id="doneList">' +
+         (done.length ? done.map(function (t) { return accHTML(t, { done: true }); }).join('') : '<p class="muted small">—</p>') + '</div></details>';
     if (open.length) {
       var last = open.reduce(function (m, t) { return t.d && t.d > m ? t.d : m; }, '');
       var until = remUntil(last), time = (list.r && list.r.time) || '09:00';
@@ -181,8 +191,22 @@
     $('clearBtn').onclick = function () {
       if (!confirm(T('clearConfirm'))) return;
       [K.done, K.fields, K.lang, K.seen, NS + 'list.' + CID].forEach(function (k) { localStorage.removeItem(k); });
-      location.reload();
+      sessionStorage.clear(); location.reload();
     };
+    var ex = expanded && app.querySelector('.acc[data-task="' + expanded + '"]');
+    if (ex) bindPanel(byId(expanded), ex);
+  }
+
+  function scrollToTask(id) {
+    var el = app.querySelector('.acc[data-task="' + id + '"]'); if (!el) return;
+    var r = el.getBoundingClientRect();
+    if (r.top < 8 || r.top > window.innerHeight * 0.6) window.scrollTo({ top: window.scrollY + r.top - 12, behavior: 'smooth' });
+  }
+
+  function toggle(id) {
+    if (expanded === id) { setExpanded(null); userCollapsed = true; } else { setExpanded(id); }
+    renderOverview();
+    if (expanded) scrollToTask(expanded);
   }
 
   function contactHTML() {
@@ -194,103 +218,102 @@
   function fmtTime(hm) { var p = hm.split(':'), d = new Date(2000, 0, 1, +p[0], +p[1]); return d.toLocaleTimeString(lang === 'es' ? 'es-US' : 'en-US', { hour: 'numeric', minute: '2-digit' }); }
   function remUntil(lastDue) { var min = CC.ymd(CC.addDays(CC.today(), 7)); return lastDue && lastDue > min ? lastDue : min; }
 
-  function fieldsHTML(keys) {
+  function fieldsHTML(t, keys) {
     if (!keys.length) return '';
-    return '<section class="card"><h3>' + T('yourInfo') + '</h3><div class="fields">' + keys.map(function (k) {
-      return '<div><label for="f_' + k + '">' + CC.esc(CC.fieldLabel(k, lang)) + '</label><input id="f_' + k + '" data-field="' + k + '" value="' + CC.esc(fields[k] || '') + '"></div>';
+    return '<section class="card soft"><h4>' + T('yourInfo') + '</h4><div class="fields">' + keys.map(function (k) {
+      var id = 'f_' + t.id + '_' + k;
+      return '<div><label for="' + id + '">' + CC.esc(CC.fieldLabel(k, lang)) + '</label><input id="' + id + '" data-field="' + k + '" value="' + CC.esc(fields[k] || '') + '"></div>';
     }).join('') + '</div><p class="small muted" style="margin:.4rem 0 0">' + T('yourInfoNote') + '</p></section>';
   }
-  function listHTML(arr, check) {
+  function listHTML(arr, check, cls) {
     if (!arr || !arr.length) return '';
-    return check ? '<ul class="checklist">' + arr.map(function (x) { return '<li><label><input type="checkbox"> <span>' + CC.fillHTML(tr(x), fields, lang) + '</span></label></li>'; }).join('') + '</ul>'
+    return check ? '<ul class="checklist' + (cls ? ' ' + cls : '') + '">' + arr.map(function (x) { return '<li><label><input type="checkbox"> <span>' + CC.fillHTML(tr(x), fields, lang) + '</span></label></li>'; }).join('') + '</ul>'
                  : '<ul>' + arr.map(function (x) { return '<li>' + CC.fillHTML(tr(x), fields, lang) + '</li>'; }).join('') + '</ul>';
   }
+  function olHTML(arr) { return arr.map(function (x) { return '<li>' + CC.fillHTML(tr(x), fields, lang) + '</li>'; }).join(''); }
 
-  function renderTask(t) {
-    var it = item(t), ty = typeOf(t), open = openTasks(), done = isDone(t), di = dueInfo(t.d);
-    var idx = open.indexOf(t);
-    var h = '<div class="task"><button class="btn ghost" id="backBtn" style="padding-left:0">' + T('back') + '</button>';
-    h += '<div class="meta"><span class="badge ' + ty + '">' + ICON[ty] + ' ' + tr(LIB.TYPES[ty]) + '</span>' +
-         (idx >= 0 ? '<span class="small muted">' + T('taskOf', { i: idx + 1, n: open.length }) + '</span>' : '<span class="badge ok">✓</span>') + '</div>';
-    h += '<h1>' + CC.esc(title(t)) + '</h1><div class="due ' + di.cls + '">' + CC.esc(di.txt) + '</div>';
+  function panelHTML(t) {
+    var it = item(t), ty = typeOf(t), done = isDone(t), open = openTasks();
+    var h = '<div class="panel-in">';
     if (t.n) h += '<section class="att-note"><b>' + T('fromAtt') + ':</b> ' + CC.esc(t.n) + '</section>';
     if (!it) {
-      h += '<section><p style="white-space:pre-wrap">' + CC.esc(t.tx || '') + '</p></section>';
+      h += '<section><p style="white-space:pre-wrap;margin:0">' + CC.esc(t.tx || '') + '</p></section>';
     } else {
       h += '<section><p style="margin:0">' + CC.esc(tr(it.summary)) + '</p></section>';
       var keys = (it.fields || []).slice();
       [it.subject, it.body].forEach(function (x) { if (x) CC.fieldsIn(tr(x)).forEach(function (k) { if (keys.indexOf(k) < 0) keys.push(k); }); });
       if (ty === 'doc') {
-        h += '<section><h3>' + T('where') + '</h3>' + listHTML(it.where) + '</section>';
-        h += '<section><h3>' + T('accepted') + '</h3>' + listHTML(it.accepted, true) + '</section>';
+        h += '<section><h4>' + T('where') + '</h4>' + listHTML(it.where) + '</section>';
+        h += '<section><h4>' + T('accepted') + '</h4>' + listHTML(it.accepted, true) + '</section>';
       }
       if (ty === 'email') {
-        h += '<section><h3>' + T('emailDraft') + '</h3><p class="small muted" style="margin:0 0 .4rem">' + CC.esc(T('emailHow', { who: (t.o && t.o.toName) || tr(it.toLabel) })) + '</p>' +
+        h += '<section><h4>' + T('emailDraft') + '</h4><p class="small muted" style="margin:0 0 .4rem">' + CC.esc(T('emailHow', { who: (t.o && t.o.toName) || tr(it.toLabel) })) + '</p>' +
              (tr(it.bodyNote) ? '<p class="small notice info" style="margin:0 0 .5rem">' + CC.esc(tr(it.bodyNote)) + '</p>' : '') +
-             '<div class="email-box"><div class="hdr"><b>' + T('to') + ':</b> <input id="emailTo" type="email" placeholder="' + T('recipientPh') + '" value="' + CC.esc(fields['__to_' + t.id] || (t.o && t.o.to) || '') + '"></div>' +
-             '<div class="hdr"><b>' + T('subject') + ':</b> <span id="emailSubj"></span></div><pre id="emailBody"></pre></div>' +
-             '<div class="row" style="margin-top:.6rem"><button class="btn" id="copyEmail">📋 ' + T('copy') + '</button><a class="btn primary grow" id="mailtoBtn">✉️ ' + T('openMail') + '</a></div>' +
-             '<p class="small muted">' + T('afterSend') + '</p></section>' + fieldsHTML(keys);
+             '<div class="email-box"><div class="hdr"><label class="inl" for="to_' + t.id + '">' + T('to') + ':</label> <input class="emailTo" id="to_' + t.id + '" type="email" placeholder="' + T('recipientPh') + '" value="' + CC.esc(fields['__to_' + t.id] || (t.o && t.o.to) || '') + '"></div>' +
+             '<div class="hdr"><b>' + T('subject') + ':</b> <span class="emailSubj"></span></div><pre class="emailBody"></pre></div>' +
+             '<div class="row" style="margin-top:.6rem"><button class="btn copyEmail">📋 ' + T('copy') + '</button><a class="btn primary grow mailtoBtn">✉️ ' + T('openMail') + '</a></div>' +
+             '<p class="small muted" style="margin:.4rem 0 0">' + T('afterSend') + '</p></section>' + fieldsHTML(t, keys);
       }
       if (ty === 'phone') {
         var num = it.phone || (t.o && t.o.phone ? '+1' + t.o.phone.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '') : '');
         var disp = it.phoneDisplay || (t.o && t.o.phone) || '';
-        h += '<section>' + (num ? '<a class="callbtn" id="callBtn" href="tel:' + num + '"><small>📞 ' + T('call') + '</small>' + CC.esc(disp) + '</a>' : '<div class="notice">' + T('noNumber') + '</div>') + '</section>';
-        h += '<section><h3>' + T('hours') + '</h3><p style="margin:0">' + CC.esc(tr(it.hours)) + '</p></section>';
-        h += fieldsHTML(keys);
-        h += '<section><h3>' + T('haveReady') + '</h3><div id="ready">' + listHTML(it.haveReady, true) + '</div></section>';
-        h += '<section><h3>' + T('script') + '</h3><ol id="script">' + it.script.map(function (x) { return '<li>' + CC.fillHTML(tr(x), fields, lang) + '</li>'; }).join('') + '</ol></section>';
+        h += '<section>' + (num ? '<a class="callbtn" href="tel:' + num + '"><small>📞 ' + T('call') + '</small>' + CC.esc(disp) + '</a>' : '<div class="notice">' + T('noNumber') + '</div>') + '</section>';
+        h += '<section><h4>' + T('hours') + '</h4><p style="margin:0">' + CC.esc(tr(it.hours)) + '</p></section>';
+        h += '<section><h4>' + T('haveReady') + '</h4>' + listHTML(it.haveReady, true, 'ready') + '</section>';
+        h += '<section><h4>' + T('script') + '</h4><ol class="script">' + olHTML(it.script) + '</ol></section>';
+        h += fieldsHTML(t, keys);
       }
       if (ty === 'online') {
         h += '<section><a class="btn primary block" href="' + it.url + '" target="_blank" rel="noopener noreferrer">🌐 ' + T('openSite') + '</a><p class="small muted" style="margin:.3rem 0 0;word-break:break-all">' + CC.esc(it.url) + '</p></section>';
-        h += fieldsHTML(keys);
-        h += '<section><h3>' + T('steps') + '</h3><ol id="steps">' + it.steps.map(function (x) { return '<li>' + CC.fillHTML(tr(x), fields, lang) + '</li>'; }).join('') + '</ol></section>';
+        h += '<section><h4>' + T('steps') + '</h4><ol class="steps">' + olHTML(it.steps) + '</ol></section>';
+        h += fieldsHTML(t, keys);
       }
-      if (it.tips && it.tips.length) h += '<section><h3>' + T('tips') + '</h3>' + listHTML(it.tips) + '</section>';
-      if (it.links && it.links.length) h += '<section><h3>' + T('links') + '</h3><ul>' + it.links.map(function (l) { return '<li><a href="' + l.url + '" target="_blank" rel="noopener noreferrer">' + CC.esc(tr(l.label)) + '</a></li>'; }).join('') + '</ul></section>';
+      if (it.tips && it.tips.length) h += '<section><h4>' + T('tips') + '</h4>' + listHTML(it.tips) + '</section>';
+      if (it.links && it.links.length) h += '<section><h4>' + T('links') + '</h4><ul>' + it.links.map(function (l) { return '<li><a href="' + l.url + '" target="_blank" rel="noopener noreferrer">' + CC.esc(tr(l.label)) + '</a></li>'; }).join('') + '</ul></section>';
     }
-    h += contactHTML() + '</div>';
-    app.innerHTML = h;
-    $('backBtn').onclick = function () { go('overview'); };
+    h += '<div class="acc-actions">' + (done
+      ? '<button class="btn act-reopen">' + T('reopen') + '</button>'
+      : '<button class="btn primary act-done">' + (ty === 'doc' ? T('haveIt') : T('markDone')) + '</button>' + (open.length > 1 ? '<button class="btn act-skip">' + T('skip') + '</button>' : '')) + '</div>';
+    return h + '</div>';
+  }
 
-    // bottom bar
-    $('bar').classList.remove('hidden');
-    $('barIn').innerHTML = done ? '<button class="btn" id="reopenBtn">' + T('reopen') + '</button>'
-      : '<button class="btn primary" id="doneBtn">' + (ty === 'doc' ? T('haveIt') : T('markDone')) + '</button>' + (open.length > 1 ? '<button class="btn" id="skipBtn">' + T('skip') + '</button>' : '');
-    if ($('doneBtn')) $('doneBtn').onclick = function () {
-      setDone(t, true); var rest = openTasks();
-      toast(T('movedDone'), function () { setDone(t, false); go(t.id); });
-      var nextT = rest.filter(function (x) { return sortKey(x) >= sortKey(t); })[0] || rest[0];
-      go(nextT ? nextT.id : 'overview');
+  function bindPanel(t, root) {
+    var q = function (sel) { return root.querySelector(sel); };
+    if (q('.act-done')) q('.act-done').onclick = function () {
+      var before = openTasks(); setDone(t, true);
+      var i = before.indexOf(t), rest = openTasks(), nextT = rest[i] || rest[0] || null;
+      setExpanded(nextT ? nextT.id : null);
+      toast(T('movedDone'), function () { setDone(t, false); setExpanded(t.id); renderOverview(); scrollToTask(t.id); });
+      renderOverview(); if (nextT) scrollToTask(nextT.id);
     };
-    if ($('skipBtn')) $('skipBtn').onclick = function () { go(open[(idx + 1) % open.length].id); };
-    if ($('reopenBtn')) $('reopenBtn').onclick = function () { setDone(t, false); toast(T('restored')); render(); };
-
-    // live fill-ins
-    app.querySelectorAll('input[data-field]').forEach(function (inp) {
-      inp.addEventListener('input', function () { fields[inp.getAttribute('data-field')] = inp.value; CC.lsSet(K.fields, fields); refreshFills(t); });
+    if (q('.act-skip')) q('.act-skip').onclick = function () {
+      var open = openTasks(), i = open.indexOf(t); var nx = open[(i + 1) % open.length];
+      setExpanded(nx.id); renderOverview(); scrollToTask(nx.id);
+    };
+    if (q('.act-reopen')) q('.act-reopen').onclick = function () { setDone(t, false); toast(T('restored')); renderOverview(); scrollToTask(t.id); };
+    root.querySelectorAll('input[data-field]').forEach(function (inp) {
+      inp.addEventListener('input', function () { fields[inp.getAttribute('data-field')] = inp.value; CC.lsSet(K.fields, fields); refreshFills(t, root); });
     });
-    if ($('emailTo')) $('emailTo').addEventListener('input', function () { fields['__to_' + t.id] = $('emailTo').value.trim(); CC.lsSet(K.fields, fields); refreshFills(t); });
-    if ($('copyEmail')) $('copyEmail').onclick = function () { var e = emailParts(t); CC.copyText((e.to ? T('to') + ': ' + e.to + '\n' : '') + T('subject') + ': ' + e.subject + '\n\n' + e.body).then(function () { toast(T('copied')); }); };
-    refreshFills(t);
+    if (q('.emailTo')) q('.emailTo').addEventListener('input', function () { fields['__to_' + t.id] = q('.emailTo').value.trim(); CC.lsSet(K.fields, fields); refreshFills(t, root); });
+    if (q('.copyEmail')) q('.copyEmail').onclick = function () { var e = emailParts(t); CC.copyText((e.to ? T('to') + ': ' + e.to + '\n' : '') + T('subject') + ': ' + e.subject + '\n\n' + e.body).then(function () { toast(T('copied')); }); };
+    refreshFills(t, root);
   }
 
   function emailParts(t) {
     var it = item(t);
     return { to: fields['__to_' + t.id] || (t.o && t.o.to) || '', subject: CC.fillText(tr(it.subject), fields, lang), body: CC.fillText(tr(it.body), fields, lang) };
   }
-  function refreshFills(t) {
+  function refreshFills(t, root) {
     var it = item(t); if (!it) return;
+    var q = function (sel) { return root.querySelector(sel); };
     if (it.type === 'email') {
-      $('emailSubj').innerHTML = CC.fillHTML(tr(it.subject), fields, lang);
-      $('emailBody').innerHTML = CC.fillHTML(tr(it.body), fields, lang);
-      var e = emailParts(t); $('mailtoBtn').href = CC.buildMailto(e.to, e.subject, e.body);
+      q('.emailSubj').innerHTML = CC.fillHTML(tr(it.subject), fields, lang);
+      q('.emailBody').innerHTML = CC.fillHTML(tr(it.body), fields, lang);
+      var e = emailParts(t); q('.mailtoBtn').href = CC.buildMailto(e.to, e.subject, e.body);
     }
-    var lists = { script: it.script, steps: it.steps };
-    Object.keys(lists).forEach(function (id) { if ($(id) && lists[id]) $(id).innerHTML = lists[id].map(function (x) { return '<li>' + CC.fillHTML(tr(x), fields, lang) + '</li>'; }).join(''); });
-    if ($('ready') && it.haveReady) {
-      $('ready').querySelectorAll('li span').forEach(function (sp, i) { sp.innerHTML = CC.fillHTML(tr(it.haveReady[i]), fields, lang); });
-    }
+    if (q('.script') && it.script) q('.script').innerHTML = olHTML(it.script);
+    if (q('.steps') && it.steps) q('.steps').innerHTML = olHTML(it.steps);
+    if (q('.ready') && it.haveReady) q('.ready').querySelectorAll('li span').forEach(function (sp, i) { sp.innerHTML = CC.fillHTML(tr(it.haveReady[i]), fields, lang); });
   }
 
   /* ---------------- calendar reminder (.ics) ---------------- */
@@ -317,13 +340,11 @@
     clearTimeout(tt); tt = setTimeout(function () { el.classList.add('hidden'); }, 4000);
   }
 
-  // Overview click delegation
+  // Accordion toggles
   app.addEventListener('click', function (e) {
-    var o = e.target.closest('[data-open]'); if (o) { go(o.getAttribute('data-open')); return; }
-    var r = e.target.closest('[data-restore]');
-    if (r) { var t = tasks.filter(function (x) { return x.id === r.getAttribute('data-restore'); })[0]; setDone(t, false); toast(T('restored')); render(); }
+    var h = e.target.closest('.acc-head'); if (h) { toggle(h.closest('.acc').getAttribute('data-task')); }
   });
 
   render();
-  window.__client = { doneMap: function () { return CC.lsGet(K.done, {}); }, list: list, checklistId: CID };
+  window.__client = { expanded: function () { return expanded; }, doneMap: function () { return CC.lsGet(K.done, {}); }, list: list, checklistId: CID };
 })();

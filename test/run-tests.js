@@ -54,99 +54,134 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(link1.startsWith(BASE + 'client.html#d='), 'Maria link v1 generated (' + link1.length + ' chars)');
   await a.screenshot({ path: path.join(SHOTS, 'attorney-1280x800-link.png') });
 
-  /* ---------- Client view ---------- */
+  /* ---------- Client view (inline accordion) ---------- */
   console.log('Client view');
   let c = await newPage(390, 844, true);
-  await c.goto(link1, { waitUntil: 'networkidle0' });
+  const fresh = async (url) => { await c.goto('about:blank'); await c.goto(url, { waitUntil: 'networkidle0' }); };
+  const accs = (list) => c.$$eval(`#${list} .acc`, els => els.map(e => ({ id: e.dataset.task, title: e.querySelector('b').textContent, exp: e.querySelector('.acc-head').getAttribute('aria-expanded') === 'true', hidden: e.querySelector('.acc-panel').hidden })));
+  const findAcc = async (re, list = 'activeList') => (await accs(list)).find(x => re.test(x.title));
+  const P = id => `.acc[data-task="${id}"]`;
+  const expand = async (re, list = 'activeList') => {
+    const x = await findAcc(re, list); if (!x) return null;
+    if (!x.exp) { await c.click(P(x.id) + ' .acc-head'); await sleep(150); }
+    return x.id;
+  };
+  const activeTitles = async () => (await accs('activeList').catch(() => [])).map(x => x.title);
+  const doneTitles = async () => (await accs('doneList').catch(() => [])).map(x => x.title);
+  const openCount = async () => c.$$eval('.acc-head[aria-expanded=true]', e => e.length);
+
+  await fresh(link1);
   ok(/Hola Maria/.test(await c.$eval('.hello h1', e => e.textContent)), 'client opens in Spanish (Maria\'s language)');
   ok(await c.$eval('html', e => e.lang) === 'es', 'html lang=es');
-  await c.screenshot({ path: path.join(SHOTS, 'client-390-overview-es.png'), fullPage: false });
+  await sleep(400); await c.screenshot({ path: path.join(SHOTS, 'client-390-overview-es.png') });
   await c.click('.lang button[data-lang=en]');
   ok(/Hi Maria/.test(await c.$eval('.hello h1', e => e.textContent)), 'Spanish → English toggle works');
   ok(/0 of 11 done/.test(await c.$eval('#progressText', e => e.textContent)), 'progress shows 0 of 11');
-  await c.screenshot({ path: path.join(SHOTS, 'client-390-overview.png') });
+  ok(!(await c.$('.task')) && !(await c.$('#bar')), 'no separate task screen / bottom bar any more');
+  const first = (await accs('activeList'))[0];
+  ok(first.exp && !first.hidden && await c.$eval(P(first.id), e => e.classList.contains('next')), '"Up next" (first open task) is auto-expanded and highlighted');
+  ok(await c.$eval(P(first.id) + ' .acc-head', e => e.tagName === 'BUTTON' && e.getAttribute('aria-controls') === e.closest('.acc').querySelector('.acc-panel').id), 'header is a <button> with aria-expanded + aria-controls');
+  ok(await openCount() === 1, 'exactly one task expanded');
+  await sleep(400); await c.screenshot({ path: path.join(SHOTS, 'client-390-overview.png') });
 
-  // Email task
-  const open = async (re) => { await c.goto('about:blank'); await c.goto(link1, { waitUntil: 'networkidle0' }); return clickText(c, '#activeList .t-row', re); };
-  ok(await open(/employment letter/i), 'open email task');
-  await c.type('#f_fullName', 'Maria Example'); await c.type('#f_employerName', 'ACME Corp'); await c.type('#f_jobTitle', 'Bookkeeper');
-  const mailto = await c.$eval('#mailtoBtn', e => e.getAttribute('href'));
+  // Email task inline
+  const emailId = await expand(/employment letter/i);
+  ok(!!emailId && await openCount() === 1 && (await findAcc(/employment letter/i)).exp, 'tapping email task expands it inline and collapses the previous one');
+  ok(await c.$eval(P(emailId) + ' .chev', e => getComputedStyle(e).transform !== 'none'), 'chevron rotates when expanded');
+  await c.type(P(emailId) + ' input[data-field=fullName]', 'Maria Example');
+  await c.type(P(emailId) + ' input[data-field=employerName]', 'ACME Corp');
+  await c.type(P(emailId) + ' input[data-field=jobTitle]', 'Bookkeeper');
+  const mailto = await c.$eval(P(emailId) + ' .mailtoBtn', e => e.getAttribute('href'));
   const u = new URL(mailto);
   ok(u.protocol === 'mailto:' && u.pathname === 'hr@example.com', 'mailto recipient = attorney-provided hr@example.com');
   const subj = decodeURIComponent(/subject=([^&]*)/.exec(mailto)[1]), body = decodeURIComponent(/body=([^&]*)/.exec(mailto)[1]);
-  ok(subj === 'Request for employment verification letter – Maria Example', 'mailto subject filled: ' + subj);
-  ok(body.includes('ACME Corp letterhead') && body.includes('\r\n') && !/[^\r]\n/.test(body), 'mailto body filled and uses CRLF line breaks');
-  ok(/^mailto:[^?]+\?subject=[^&]+&body=[^&]+$/.test(mailto) && !/[ \n]/.test(mailto), 'mailto URL well-formed (no raw spaces/newlines)');
-  ok((await c.$$('#emailBody mark.blank')).length >= 1, 'unfilled blanks highlighted (startDate/phone)');
-  await c.evaluate(() => window.scrollTo(0, 0)); await c.screenshot({ path: path.join(SHOTS, 'client-390-email-task.png') });
-  await c.evaluate(() => document.querySelector('.email-box').scrollIntoView({ block: 'start' })); await c.evaluate(() => window.scrollBy(0, -12)); await c.screenshot({ path: path.join(SHOTS, 'client-390-email-draft.png') });
-  await c.screenshot({ path: path.join(SHOTS, 'client-390-email-task-full.png'), fullPage: true });
+  ok(subj === 'Request for employment verification letter – Maria Example', 'mailto subject live-filled: ' + subj);
+  ok(body.includes('ACME Corp letterhead') && body.includes('\r\n') && !/[^\r]\n/.test(body), 'mailto body live-filled, CRLF line breaks');
+  ok(/^mailto:[^?]+\?subject=[^&]+&body=[^&]+$/.test(mailto) && !/[ \n]/.test(mailto), 'mailto URL well-formed');
+  ok((await c.$$(P(emailId) + ' .emailBody mark.blank')).length >= 1, 'unfilled blanks highlighted');
+  await c.click(P(emailId) + ' .emailTo', { clickCount: 3 }); await c.type(P(emailId) + ' .emailTo', 'payroll@example.com');
+  ok(new URL(await c.$eval(P(emailId) + ' .mailtoBtn', e => e.getAttribute('href'))).pathname === 'payroll@example.com', 'editable To updates the mailto link');
+  ok(!!(await c.$(P(emailId) + ' .copyEmail')) && !!(await c.$(P(emailId) + ' .act-done')) && !!(await c.$(P(emailId) + ' .act-skip')), 'Copy, Mark as done and Skip are inside the panel');
+  await c.$eval(P(emailId), e => window.scrollTo(0, window.scrollY + e.getBoundingClientRect().top - 70));
+  await sleep(400);
+  await c.screenshot({ path: path.join(SHOTS, 'client-390-list-email-expanded.png') });
+  await c.screenshot({ path: path.join(SHOTS, 'client-390-list-email-expanded-full.png'), fullPage: true });
+  await c.click(P(emailId) + ' .acc-head'); await sleep(100);
+  ok(!(await findAcc(/employment letter/i)).exp && (await findAcc(/employment letter/i)).hidden && await openCount() === 0, 'tapping again collapses it');
 
-  // Phone task
-  ok(await open(/IRS tax transcripts by phone/i), 'open phone task');
-  ok(await c.$eval('#callBtn', e => e.getAttribute('href')) === 'tel:+18009089946', 'tap-to-call tel:+18009089946');
-  await c.type('#f_taxYears', '2023, 2024, 2025');
-  ok(/2023, 2024, 2025/.test(await c.$eval('#script', e => e.textContent)), 'script fill-in updates live');
-  await c.evaluate(() => window.scrollTo(0, 0)); await c.screenshot({ path: path.join(SHOTS, 'client-390-phone-task.png') });
-  await c.screenshot({ path: path.join(SHOTS, 'client-390-phone-task-full.png'), fullPage: true });
+  // Phone task inline
+  const phoneId = await expand(/IRS tax transcripts by phone/i);
+  ok(await c.$eval(P(phoneId) + ' a.callbtn', e => e.getAttribute('href')) === 'tel:+18009089946', 'tap-to-call tel:+18009089946 inline');
+  ok(/24 hours/.test(await c.$eval(P(phoneId) + ' .acc-panel', e => e.textContent)) && (await c.$$(P(phoneId) + ' .ready li')).length === 3, 'hours + have-ready list shown');
+  await c.type(P(phoneId) + ' input[data-field=taxYears]', '2023, 2024, 2025');
+  ok(/2023, 2024, 2025/.test(await c.$eval(P(phoneId) + ' .script', e => e.textContent)), 'script fill-in updates live');
+  await c.$eval(P(phoneId), e => window.scrollTo(0, window.scrollY + e.getBoundingClientRect().top - 70));
+  await sleep(400);
+  await c.screenshot({ path: path.join(SHOTS, 'client-390-list-phone-expanded.png') });
+  await c.screenshot({ path: path.join(SHOTS, 'client-390-list-phone-expanded-full.png'), fullPage: true });
+  await c.reload({ waitUntil: 'networkidle0' });
+  ok((await findAcc(/IRS tax transcripts by phone/i)).exp, 'expanded task stays expanded after refresh');
   await c.click('.lang button[data-lang=es]');
-  ok(/Llame al 800-908-9946/.test(await c.$eval('#script', e => e.textContent)), 'Spanish toggle translates task script');
-  await c.screenshot({ path: path.join(SHOTS, 'client-390-phone-task-es.png') });
+  ok(/Llame al 800-908-9946/.test(await c.$eval(P(phoneId) + ' .script', e => e.textContent)), 'Spanish toggle translates the expanded script');
+  await c.$eval(P(phoneId), e => window.scrollTo(0, window.scrollY + e.getBoundingClientRect().top - 70)); await sleep(300);
+  await c.screenshot({ path: path.join(SHOTS, 'client-390-list-phone-expanded-es.png') });
   await c.click('.lang button[data-lang=en]');
 
-  // Check off 2 tasks via the walkthrough
+  // Done-state
   console.log('Done-state persistence');
-  await c.click('#doneBtn'); // phone task done → advances to next task
-  await sleep(200);
-  const secondTitle = await c.$eval('.task h1', e => e.textContent);
-  await c.click('#doneBtn');
-  await sleep(200);
-  await c.click('#backBtn');
-  const doneIds = Object.keys(await c.evaluate(() => window.__client.doneMap())).filter(Boolean);
-  const activeTitles = async () => c.$$eval('#activeList .t-row b', els => els.map(e => e.textContent));
-  const doneTitles = async () => c.$$eval('#doneSec .done-row .tt', els => els.map(e => e.textContent));
-  ok(doneIds.length === 2, '2 tasks stored as done (keyed by task id with doneAt): ' + JSON.stringify(await c.evaluate(() => window.__client.doneMap())));
-  ok((await doneTitles()).length === 2 && !(await activeTitles()).some(t => /by phone/.test(t)), 'checked tasks left the active list and are in Done');
-  ok(await c.$eval('#doneSec', e => !e.open), 'Done section is collapsed by default');
+  await c.click(P(phoneId) + ' .act-done'); await sleep(200);
+  ok((await doneTitles()).some(t => /by phone/.test(t)) && !(await activeTitles()).some(t => /by phone/.test(t)), 'Mark as done moves the task to Done');
+  const nowOpen = (await accs('activeList')).filter(x => x.exp);
+  ok(nowOpen.length === 1, 'next open task auto-expands after marking done (' + (nowOpen[0] || {}).title + ')');
+  await c.click(P(nowOpen[0].id) + ' .act-done'); await sleep(200);
+  const doneIds = Object.keys(await c.evaluate(() => window.__client.doneMap()));
+  ok(doneIds.length === 2, '2 tasks stored as done (by task id, with doneAt)');
+  ok(await c.$eval('#doneSec', e => !e.open), 'Done section collapsed by default');
   await c.reload({ waitUntil: 'networkidle0' });
   ok((await doneTitles()).length === 2 && (await activeTitles()).length === 9, 'after refresh: still 2 done, 9 active');
   await c.close();
   c = await newPage(390, 844, true);
-  await c.goto(link1, { waitUntil: 'networkidle0' });
+  await fresh(link1);
   ok((await doneTitles()).length === 2 && (await activeTitles()).length === 9, 'close tab + reopen link: still 2 done');
   await c.click('#doneSec summary');
+  const dId = await expand(/./, 'doneList');
+  ok(!!(await c.$(P(dId) + ' .act-reopen')) && !(await c.$eval(P(dId) + ' .acc-panel', e => e.hidden)), 'Done items expand to view details (with "Not done yet")');
   await c.screenshot({ path: path.join(SHOTS, 'client-390-overview-done-open.png'), fullPage: true });
-
-  // Restore one
-  const restoredTitle = await c.$eval('.done-row .tt', e => e.textContent);
-  await c.click('[data-restore]');
+  const restoredTitle = (await accs('doneList')).find(x => x.id === dId).title;
+  await c.click(P(dId) + ' .act-reopen'); await sleep(150);
   ok((await doneTitles()).length === 1 && (await activeTitles()).length === 10, 'restore moves a task back to active');
   await c.reload({ waitUntil: 'networkidle0' });
   ok((await doneTitles()).length === 1, 'restore persists after refresh');
-  // re-check it for the update test
-  await clickText(c, '#activeList .t-row', new RegExp(restoredTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))); await c.click('#doneBtn'); await sleep(150);
+  const rId = (await accs('activeList')).find(x => x.title === restoredTitle).id;
+  if (!(await accs('activeList')).find(x => x.id === rId).exp) await c.click(P(rId) + ' .acc-head');
+  await c.click(P(rId) + ' .act-done'); await sleep(150);
+
+  // Deep links
+  await fresh(link1 + '&t=' + emailId);
+  ok((await findAcc(/employment letter/i)).exp && await openCount() === 1, 'deep link #d=…&t=<taskId> opens the list with that task expanded');
+  await c.evaluate(id => { const k = Object.keys(sessionStorage).find(k => /\.view\.cl_[^.]+$/.test(k)) || ('cc.client.v1.view.' + window.__client.checklistId); sessionStorage.setItem('cc.client.v1.view.' + window.__client.checklistId, id); }, emailId);
+  await fresh(link1);
+  ok((await findAcc(/employment letter/i)).exp, 'old per-task screen state (legacy view key) redirects to list with task expanded');
 
   // Updated link with one extra task
   console.log('Updated link merge');
   await a.bringToFront();
-  await clickText(a, '#library .lib-item', /FBI background check/) ;
   const addBtn = await a.evaluateHandle(() => [...document.querySelectorAll('#library .lib-item')].find(e => /FBI background check/.test(e.textContent)).querySelector('button'));
   await addBtn.click();
   await a.click('#genLink');
   const link2 = await a.$eval('#linkText', e => e.textContent);
   ok(link2 !== link1 && /version 2/.test(await a.$eval('#linkMeta', e => e.textContent)), 'updated link v2 generated');
-  await c.goto('about:blank'); await c.goto(link2, { waitUntil: 'networkidle0' });
+  await fresh(link2);
   ok((await doneTitles()).length === 2, 'updated link: previous 2 tasks still done');
   ok((await activeTitles()).some(t => /FBI background check/.test(t)) && (await activeTitles()).length === 10, 'updated link: new FBI task appears open (10 active)');
   ok(/added 1 new task/.test(await c.$eval('.notice.info', e => e.textContent)), 'banner announces 1 new task');
-  await c.goto('about:blank'); await c.goto(link1, { waitUntil: 'networkidle0' });
+  await fresh(link1);
   ok((await activeTitles()).some(t => /FBI/.test(t)) && (await doneTitles()).length === 2, 're-opening the OLD link still shows newest version + done-state');
-  // Removed task drops
   await a.bringToFront();
   const rm = await a.evaluateHandle(() => [...document.querySelectorAll('#tasks .task-item')].find(e => /Photos of you together/.test(e.textContent)).querySelector('[data-act=remove]'));
   await rm.click(); await a.click('#genLink');
   const link3 = await a.$eval('#linkText', e => e.textContent);
-  await c.goto('about:blank'); await c.goto(link3, { waitUntil: 'networkidle0' });
+  await fresh(link3);
   ok(!(await activeTitles()).some(t => /Photos of you together/.test(t)) && (await doneTitles()).length === 2, 'v3 with a removed task: task drops, done tasks stay done');
 
   // ICS download
