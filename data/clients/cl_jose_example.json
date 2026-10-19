@@ -1,0 +1,42 @@
+{
+  "$schema": "../../schema/client-checklist.schema.json",
+  "schemaVersion": 1,
+  "id": "cl_jose_example",
+  "rev": 2,
+  "createdAt": "2026-10-19T17:38:53.888Z",
+  "updatedAt": "2026-10-19T17:38:54.038Z",
+  "client": {
+    "name": "Jose Example",
+    "language": "es"
+  },
+  "caseType": "naturalization",
+  "message": "Hola Jose, aquí está lo que necesitamos. Vaya paso a paso.",
+  "attorney": {
+    "name": "Example Immigration Law Office",
+    "phone": "(555) 555-0100",
+    "email": "office@example.com"
+  },
+  "reminders": {
+    "email": false,
+    "sms": false,
+    "emailAddr": "",
+    "phone": "",
+    "time": "18:00"
+  },
+  "tasks": [
+    {
+      "id": "tk_dfdb47b421",
+      "library": "birth_cert",
+      "due": "2026-11-15",
+      "createdAt": "2026-10-19T17:38:54.037Z",
+      "updatedAt": "2026-10-19T17:38:54.037Z"
+    },
+    {
+      "id": "tk_472b352e86",
+      "library": "irs_transcript_online",
+      "due": "2026-11-15",
+      "createdAt": "2026-10-19T17:38:54.038Z",
+      "updatedAt": "2026-10-19T17:38:54.038Z"
+    }
+  ]
+}
