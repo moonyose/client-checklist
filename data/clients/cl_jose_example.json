@@ -2,9 +2,9 @@
   "$schema": "../../schema/client-checklist.schema.json",
   "schemaVersion": 1,
   "id": "cl_jose_example",
-  "rev": 3,
+  "rev": 4,
   "createdAt": "2026-10-19T17:38:53.888Z",
-  "updatedAt": "2026-10-19T17:38:58.725Z",
+  "updatedAt": "2026-10-19T17:39:01.347Z",
   "client": {
     "name": "Jose Example",
     "language": "es"
@@ -36,7 +36,8 @@
       "library": "irs_transcript_online",
       "due": "2026-11-15",
       "createdAt": "2026-10-19T17:38:54.038Z",
-      "updatedAt": "2026-10-19T17:38:54.038Z"
+      "updatedAt": "2026-10-19T17:39:01.346Z",
+      "deleted": true
     },
     {
       "id": "tk_6dd0926063",
