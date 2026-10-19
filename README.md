@@ -160,7 +160,7 @@ serve.sh              local static server (port 8437)
 REMINDERS.md          design doc for real reminders + backend + cost estimate
 shots/                screenshots + a sample .ics from the test run
 test/run-tests.js     headless Chrome end-to-end tests (64 checks)
-test/agent-e2e.sh     live end-to-end test acting as the attorney's AI (commits to the repo)
+test/agent-e2e.mjs    live end-to-end test acting as the attorney's AI (real commits: create from dictation, add, remove)
 test/validate_ics.py  parses the downloaded .ics with icalendar + dateutil and expands the RRULE
 test/fileurl-smoke.js checks the app also works from file://
 ```
