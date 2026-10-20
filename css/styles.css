@@ -40,7 +40,9 @@ label{display:block;font-weight:600;font-size:.875rem;margin:.6rem 0 .25rem}
 .toast button{background:none;border:0;color:#9fd8d2;font:inherit;font-weight:700;cursor:pointer}
 
 /* ---------------- Attorney ---------------- */
-.a-top{background:var(--brand);color:#fff;padding:.75rem 1.25rem;display:flex;align-items:center;gap:1rem}
+.a-top{background:var(--brand);color:#fff;padding:.75rem 1.25rem;padding-top:max(.75rem,env(safe-area-inset-top));display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+.a-top .proto .short{display:none}
+.hdr-btn{background:transparent!important;color:#fff!important;border-color:rgba(255,255,255,.35)!important}
 .a-top .logo{font-weight:800;letter-spacing:.2px}
 .a-top .proto{font-size:.8rem;background:rgba(255,255,255,.14);padding:.2rem .6rem;border-radius:999px}
 .a-layout{display:grid;grid-template-columns:220px minmax(0,1fr) 380px;gap:1rem;padding:1rem 1.25rem;max-width:1500px;margin:0 auto}
@@ -58,10 +60,13 @@ label{display:block;font-weight:600;font-size:.875rem;margin:.6rem 0 .25rem}
 .task-item .opts input{padding:.35rem .5rem}
 .task-item details summary{cursor:pointer;color:var(--brand-2);font-size:.85rem}
 .lib-list{max-height:520px;overflow:auto;margin-top:.5rem;border-top:1px solid var(--line)}
-.lib-item{display:flex;gap:.5rem;align-items:flex-start;padding:.55rem .2rem;border-bottom:1px solid var(--line)}
-.lib-item .t{flex:1;font-size:.9rem}
+.lib-item{display:flex;gap:.5rem;align-items:center;width:100%;text-align:left;font:inherit;color:inherit;background:none;border:0;border-bottom:1px solid var(--line);padding:.6rem .3rem;min-height:48px;cursor:pointer}
+.lib-item:hover:not(:disabled){background:#faf9f6}
+.lib-item .t{flex:1;min-width:0;font-size:.9rem}
 .lib-item .t b{display:block;font-weight:600}
-.lib-item.added{opacity:.55}
+.lib-item .add-pill{flex:none;font-weight:700;font-size:.875rem;color:var(--brand-2);border:1px solid var(--line);border-radius:999px;padding:.3rem .7rem;background:#fff}
+.lib-item:disabled{cursor:default}
+.lib-item.added{opacity:.6} .lib-item.added .add-pill{color:var(--ok);background:var(--ok-bg);border-color:#cfe6d8}
 .linkbox{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.75rem;word-break:break-all;background:#f3f2ee;border-radius:8px;padding:.5rem;max-height:90px;overflow:auto}
 .parse-out li{margin:.15rem 0}
 .mic.on{background:#b3261e;border-color:#b3261e;color:#fff}
@@ -146,3 +151,80 @@ footer.c-foot{margin-top:2rem;font-size:.8rem;color:var(--muted)}
 .acc-actions .btn{flex:1;min-height:48px}
 label.inl{display:inline;margin:0;font-size:inherit}
 details.done-sec .acc-list{margin-top:.25rem}
+
+/* ---------------- Attorney: sections, preview, sheet, responsive ---------------- */
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.sec{margin-bottom:1rem}
+.sec>summary{list-style:none;display:flex;align-items:center;gap:.5rem;cursor:pointer;flex-wrap:wrap;min-height:28px}
+.sec>summary::-webkit-details-marker{display:none}
+.sec>summary h2{margin:0;flex:1;min-width:0}
+.sec>summary::after{content:"";flex:none;width:.55rem;height:.55rem;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);margin:0 .3rem .2rem;transition:transform .15s}
+.sec[open]>summary::after{transform:rotate(-135deg);margin-bottom:-.2rem}
+.sec>summary .sum-meta{font-size:.8rem;color:var(--muted);font-weight:600}
+.sec[open]>summary .sum-meta{display:none}
+.sec>.sec-body{margin-top:.6rem}
+.a-side .sec{margin:0}
+label.chk{display:flex;align-items:center;gap:.5rem}
+label.chk input{width:auto;width:20px;height:20px;margin:0}
+.task-item .head{flex-wrap:nowrap}
+.task-item .title{min-width:0;overflow-wrap:anywhere}
+.ti-acts{display:flex;flex:none}
+.btn.icon{min-width:36px;padding-left:.3rem;padding-right:.3rem}
+.lib-filter select{width:auto}
+.lib-filter input{width:auto;min-width:0}
+.pv-row{border:1px solid var(--line);border-radius:10px;padding:.6rem;margin-bottom:.5rem;background:#faf9f6;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.4rem .6rem;align-items:start}
+.pv-main{display:grid;gap:.4rem;min-width:0}
+.pv-side{display:flex;gap:.3rem;align-items:center}
+.pv-side input{width:auto}
+.pv-src{grid-column:1/-1;overflow-wrap:anywhere}
+.linkbox{overflow-wrap:anywhere}
+.a-bar{display:none}
+.sheet-backdrop{position:fixed;inset:0;background:rgba(15,22,30,.45);z-index:60}
+.sheet{position:fixed;z-index:61;left:50%;top:50%;transform:translate(-50%,-50%);width:min(520px,94vw);max-height:90vh;overflow:auto;background:#fff;border-radius:16px;padding:1rem 1.1rem 1.1rem;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+.sheet-grip{display:none}
+.sheet-actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.6rem}
+.sheet-actions .btn{flex:1 1 auto}
+body.sheet-open{overflow:hidden}
+
+/* Tablet + phone: one column, sections in working order, sticky action bar */
+@media (max-width:1099px){
+  .a-layout{display:flex;flex-direction:column;gap:0;padding:.75rem;max-width:760px;padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+  .a-side,.a-main,.a-right{display:contents}
+  #secClients{order:1;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:1rem;margin-bottom:1rem}
+  #secClient{order:2} #secDictate{order:3} #secTasks{order:4} #secLibrary{order:5} #secReminders{order:6} #secShare{order:7}
+  .sec>summary{min-height:44px}
+  .a-bar{display:flex;gap:.6rem;position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(255,255,255,.97);border-top:1px solid var(--line);
+    padding:.6rem .75rem calc(.6rem + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(20,30,40,.08)}
+  .a-bar .btn{flex:1;min-height:52px;font-size:1rem}
+  .toast{bottom:calc(90px + env(safe-area-inset-bottom))}
+  .lib-list{max-height:none}
+  .btn,.btn.small{min-height:44px}
+  .btn.icon{min-width:44px}
+  .a-side .draft{min-height:48px}
+  input,select,textarea{font-size:16px;min-height:44px}
+  textarea{min-height:0}
+  label.chk{min-height:44px;margin:.3rem 0 .1rem}
+  .sheet{left:0;right:0;top:auto;bottom:0;transform:none;width:auto;max-height:88vh;border-radius:18px 18px 0 0;padding:.5rem 1rem calc(1rem + env(safe-area-inset-bottom))}
+  .sheet-grip{display:block;width:44px;height:5px;border-radius:3px;background:#d6d3cb;margin:.2rem auto .7rem}
+  .sheet-actions .btn{min-height:48px}
+}
+@media (max-width:700px){
+  .a-top{padding:.6rem .75rem;gap:.5rem}
+  .a-top .proto .long{display:none} .a-top .proto .short{display:inline}
+  .a-top .proto{order:3;font-size:.75rem}
+  .a-top .hdr-btn{min-height:44px;padding:.3rem .7rem}
+  .a-layout{padding-left:.6rem;padding-right:.6rem}
+  .card,#secClients{padding:.85rem}
+  .grid2,.grid3{grid-template-columns:1fr}
+  .due-row{display:grid;grid-template-columns:1fr;gap:.4rem}
+  .due-row label{margin-top:.4rem}
+  .due-row input{width:100%!important}
+  .due-row .grow{display:none}
+  .task-item{padding:.6rem}
+  .task-item .opts{grid-template-columns:1fr}
+  .task-item .head{flex-wrap:wrap}
+  .task-item .title{flex:1 1 60%}
+  .pv-row{grid-template-columns:1fr}
+  .pv-side input{flex:1}
+  .sheet-actions{flex-direction:column}
+}

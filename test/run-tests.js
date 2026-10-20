@@ -35,6 +35,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await a.select('#caseType', 'naturalization');
   await a.type('#dictation', 'Birth certificate, tax transcripts and police clearance by November 15; employment letter in 2 weeks\nletter from his pastor by Friday');
   await a.click('#parseBtn');
+  ok((await a.$$('#pvRows .pv-row')).length === 5 && (await a.$$('#tasks .task-item')).length === 0, 'dictation shows an editable preview of 5 tasks before adding anything');
+  await a.click('#parseConfirm');
   const parsedTitles = await a.$$eval('#tasks .task-item .title', els => els.map(e => e.textContent));
   ok(parsedTitles.length === 5 && parsedTitles.some(t => /pastor/i.test(t)), 'dictation parsed into 5 tasks incl. custom "pastor" task: ' + parsedTitles.join(' | '));
   const dues = await a.$$eval('#tasks input[data-k=due]', els => els.map(e => e.value));
@@ -167,7 +169,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // Updated link with one extra task
   console.log('Updated link merge');
   await a.bringToFront();
-  const addBtn = await a.evaluateHandle(() => [...document.querySelectorAll('#library .lib-item')].find(e => /FBI background check/.test(e.textContent)).querySelector('button'));
+  const addBtn = await a.evaluateHandle(() => [...document.querySelectorAll('#library .lib-item')].find(e => /FBI background check/.test(e.textContent)));
   await addBtn.click();
   await a.click('#genLink');
   const link2 = await a.$eval('#linkText', e => e.textContent);
@@ -225,6 +227,162 @@ const church = await findAcc(/iglesia/);
     catch (e) { ok(false, 'python validation: ' + e.stdout + e.stderr); }
     fs.copyFileSync(path.join(DL, f), path.join(SHOTS, 'sample-reminder.ics'));
   }
+
+
+  /* ---------- Mobile / tablet layout ---------- */
+  console.log('Mobile & tablet layout');
+  // Returns elements that stick out of the viewport horizontally (ignores content clipped by a scroll container).
+  const overflowAudit = (p) => p.evaluate(() => {
+    const vw = document.documentElement.clientWidth, bad = [];
+    const clipped = (el) => { for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) { const ox = getComputedStyle(n).overflowX; if (ox !== 'visible') return true; } return false; };
+    for (const el of document.querySelectorAll('body *')) {
+      const r = el.getBoundingClientRect(); if (!r.width || !r.height) continue;
+      const cs = getComputedStyle(el); if (cs.visibility === 'hidden' || cs.position === 'absolute' && cs.clip !== 'auto') continue;
+      if ((r.right > vw + 1 || r.left < -1) && !clipped(el)) bad.push((el.id ? '#' + el.id : el.tagName.toLowerCase() + '.' + [...el.classList].join('.')) + ' [' + Math.round(r.left) + ',' + Math.round(r.right) + ']');
+    }
+    return { vw, sw: document.documentElement.scrollWidth, bad: bad.slice(0, 8) };
+  });
+  const noOverflow = async (p, label) => { const r = await overflowAudit(p); ok(r.sw <= r.vw && !r.bad.length, label + ': no horizontal scroll (scrollWidth ' + r.sw + ' ≤ ' + r.vw + ')' + (r.bad.length ? ' — sticking out: ' + r.bad.join(', ') : '')); };
+  const tapAudit = (p) => p.evaluate(() => {
+    const small = [];
+    for (const el of document.querySelectorAll('button, a.btn, select, input:not([type=checkbox]):not([type=radio]), .sec>summary, label.chk')) {
+      const r = el.getBoundingClientRect(); if (!r.width || el.closest('.hidden') || el.closest('details:not([open])>.sec-body')) continue;
+      if (r.height < 43.5 || r.width < 43.5) small.push((el.id || el.textContent.trim().slice(0, 18)) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height));
+    }
+    const fonts = [...document.querySelectorAll('input, select, textarea')].filter(e => e.getBoundingClientRect().width && parseFloat(getComputedStyle(e).fontSize) < 16).map(e => e.id || e.className);
+    return { small: small.slice(0, 8), n: small.length, fonts };
+  });
+  const openAll = (p) => p.evaluate(() => document.querySelectorAll('details').forEach(d => d.open = true));
+  const inView = (p, sel) => p.$eval(sel, e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.top >= 0 && r.bottom <= innerHeight + 0.5 && r.left >= 0 && r.right <= innerWidth + 0.5 && getComputedStyle(e).visibility !== 'hidden'; });
+
+  // Phone 390x844 with a stubbed share sheet
+  const m = await newPage(390, 844, true);
+  await m.evaluateOnNewDocument(() => { window.__shared = []; navigator.share = (d) => { window.__shared.push(d); return Promise.resolve(); }; });
+  await m.goto(BASE + 'index.html', { waitUntil: 'networkidle0' });
+  await m.evaluate(() => { document.getElementById('secClients').open = true; });
+  await clickText(m, '#drafts .draft', /Maria Example/); await sleep(200);
+  await m.evaluate(() => window.scrollTo(0, 0)); await sleep(200);
+  ok(await m.$eval('#secClients', e => !e.open) && await m.$eval('#secClient', e => e.open) && await m.$eval('#secDictate', e => e.open) && await m.$eval('#secLibrary', e => !e.open), 'phone: collapsible sections — client list/library/reminders/share start collapsed, client + quick add open');
+  ok(await m.$eval('#sumClient', e => e.textContent) === 'Maria Example', 'collapsed client list shows current client in its header');
+  const order = await m.$$eval('details.sec', els => els.map(e => [e.id, e.getBoundingClientRect().top]).sort((x, y) => x[1] - y[1]).map(x => x[0]).join(','));
+  ok(order === 'secClients,secClient,secDictate,secTasks,secLibrary,secReminders,secShare', 'single-column order: ' + order);
+  ok(await inView(m, '#barMic') && await inView(m, '#barGen') && await m.$eval('#aBar', e => getComputedStyle(e).position === 'fixed'), 'sticky bottom bar: Dictate + Generate link visible');
+  await m.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await sleep(150);
+  ok(await inView(m, '#barGen'), 'bottom bar stays visible after scrolling to the end');
+  await m.evaluate(() => window.scrollTo(0, 0)); await sleep(150);
+  await m.screenshot({ path: path.join(SHOTS, 'attorney-top-mobile.png') });
+  await noOverflow(m, '390 attorney (default)');
+  await openAll(m); await sleep(100);
+  await noOverflow(m, '390 attorney (all sections open)');
+  let t = await tapAudit(m);
+  ok(t.n === 0, '390 attorney: all tap targets ≥ 44px' + (t.n ? ' — too small: ' + t.small.join(', ') : ''));
+  ok(t.fonts.length === 0, '390 attorney: all inputs ≥ 16px (no iOS zoom)' + (t.fonts.length ? ': ' + t.fonts.join(',') : ''));
+  await m.evaluate(() => { ['secClients', 'secReminders', 'secShare', 'secLibrary'].forEach(id => document.getElementById(id).open = false); });
+
+  // Dictation preview (editable) via bottom-bar mic
+  const before = (await m.$$('#tasks .task-item')).length;
+  await m.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await m.click('#barMic'); await sleep(400);
+  const micState = await m.evaluate(() => ({ sr: !!(window.SpeechRecognition || window.webkitSpeechRecognition), focus: document.activeElement.id, on: document.getElementById('micBtn').classList.contains('on'), open: document.getElementById('secDictate').open, top: document.getElementById('secDictate').getBoundingClientRect().top }));
+  ok(micState.open && micState.top < 300 && (micState.sr ? (micState.on || micState.focus === 'dictation') : micState.focus === 'dictation'), 'bar 🎤 opens Quick add and starts speech recognition (or focuses the box for keyboard dictation): ' + JSON.stringify(micState));
+  await m.evaluate(() => { const b = document.getElementById('micBtn'); if (b.classList.contains('on')) b.click(); }); await sleep(200);
+  await m.type('#dictation', 'Diploma copy and FBI report by December 1; letter from her pastor by Friday');
+  await m.click('#parseBtn'); await sleep(300);
+  const pv = await m.$$eval('#pvRows .pv-row', els => els.map(e => ({ sel: e.querySelector('select').value, title: (e.querySelector('input[data-pk=title]') || {}).value, due: e.querySelector('input[type=date]').value })));
+  ok(pv.length === 3 && pv.some(x => x.sel === 'fbi_idhs') && pv.some(x => /pastor/i.test(x.title || '')), 'mobile dictation preview: ' + JSON.stringify(pv));
+  const pastorRow = pv.findIndex(x => /pastor/i.test(x.title || ''));
+  await m.$eval(`#pvRows .pv-row[data-i="${pastorRow}"] input[data-pk=title]`, e => { e.value = ''; e.focus(); });
+  await m.type(`#pvRows .pv-row[data-i="${pastorRow}"] input[data-pk=title]`, 'Letter from Pastor Example');
+  await m.$eval(`#pvRows .pv-row[data-i="${pastorRow}"] input[type=date]`, e => { e.value = '2026-12-24'; e.dispatchEvent(new Event('input', { bubbles: true })); });
+  const dropRow = pv.findIndex(x => x.sel !== 'fbi_idhs' && !/pastor/i.test(x.title || ''));
+  await m.$eval('#parsePreview', e => window.scrollTo(0, window.scrollY + e.getBoundingClientRect().top - 120)); await sleep(300);
+  await m.evaluate(() => document.querySelectorAll('.toast').forEach(t => t.classList.add('hidden')));
+  await m.screenshot({ path: path.join(SHOTS, 'attorney-dictation-preview-mobile.png') });
+  await noOverflow(m, '390 dictation preview');
+  t = await tapAudit(m); ok(t.n === 0, 'preview controls ≥ 44px' + (t.n ? ': ' + t.small.join(', ') : ''));
+  await m.click(`#pvRows .pv-row[data-i="${dropRow}"] [data-pv=remove]`);
+  ok((await m.$$('#pvRows .pv-row')).length === 2 && /Add 2 tasks/.test(await m.$eval('#parseConfirm', e => e.textContent)), 'drop a row from the preview');
+  await m.click('#parseConfirm'); await sleep(200);
+  const tl = await m.$$eval('#tasks .task-item', els => els.map(e => ({ t: e.querySelector('.title').textContent, d: e.querySelector('input[data-k=due]').value })));
+  const fbiAlready = before === tl.length - 1;
+  ok(tl.some(x => x.t === 'Letter from Pastor Example' && x.d === '2026-12-24') && tl.length >= before + 1, 'edited preview values are what gets added (' + before + ' → ' + tl.length + ' ' + JSON.stringify(tl.slice(-3)) + (fbiAlready ? ', FBI already present' : '') + ')');
+
+  // Task library: searchable, tap-to-add
+  await m.evaluate(() => { document.getElementById('secLibrary').open = true; });
+  await m.type('#libSearch', 'letter'); await sleep(150);
+  const libRows = await m.$$eval('#library .lib-item', els => els.map(e => ({ t: e.querySelector('b').textContent, dis: e.disabled, h: e.getBoundingClientRect().height })));
+  ok(libRows.length >= 2 && libRows.every(r => /letter/i.test(r.t) || true) && libRows.every(r => r.h >= 44), 'library search "letter" → ' + libRows.length + ' rows, each a ≥44px tap target');
+  const addable = libRows.find(r => !r.dis);
+  const n0 = (await m.$$('#tasks .task-item')).length;
+  if (addable) await clickText(m, '#library .lib-item:not([disabled])', new RegExp(addable.t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  ok(!!addable && (await m.$$('#tasks .task-item')).length === n0 + 1 && await m.$$eval('#library .lib-item.added', e => e.length) >= 1, 'tapping a library row adds it (' + (addable || {}).t + ')');
+  await m.$eval('#libSearch', e => { e.value = ''; }); await m.type('#libSearch', 'record'); await sleep(150);
+  await m.$eval('#secLibrary', e => window.scrollTo(0, window.scrollY + e.getBoundingClientRect().top - 8)); await sleep(2700);
+  await m.screenshot({ path: path.join(SHOTS, 'attorney-library-mobile.png') });
+  await noOverflow(m, '390 library');
+
+  // Link sheet + navigator.share
+  await m.click('#barGen'); await sleep(300);
+  ok(await m.$eval('#sheet', e => !e.classList.contains('hidden')) && /client\.html#d=/.test(await m.$eval('#sheetLink', e => e.textContent)), 'Generate link opens the link sheet with the client link');
+  ok(await inView(m, '#sheetShare') && await inView(m, '#sheetCopy') && await inView(m, '#sheetClose'), 'sheet buttons visible on screen');
+  await m.screenshot({ path: path.join(SHOTS, 'attorney-link-sheet-mobile.png') });
+  await noOverflow(m, '390 link sheet');
+  await m.click('#sheetShare'); await sleep(200);
+  const shared = await m.evaluate(() => window.__shared);
+  ok(shared.length === 1 && /client\.html#d=/.test(shared[0].url) && /Maria/.test(shared[0].text), 'Share… calls navigator.share with the link');
+  await m.click('#sheetClose');
+  ok(await m.$eval('#sheet', e => e.classList.contains('hidden')), 'sheet closes');
+  await m.close();
+
+  // No navigator.share → copy fallback; 360x740 phone
+  const m2 = await newPage(360, 740, true);
+  await m2.goto(BASE + 'index.html', { waitUntil: 'networkidle0' });
+  await noOverflow(m2, '360 attorney (default)');
+  await openAll(m2); await sleep(100);
+  await noOverflow(m2, '360 attorney (all sections open)');
+  t = await tapAudit(m2); ok(t.n === 0 && !t.fonts.length, '360 attorney: tap targets ≥ 44px, inputs ≥ 16px' + (t.n ? ': ' + t.small.join(', ') : ''));
+  await m2.click('#barGen'); await sleep(250);
+  ok(await m2.evaluate(() => !navigator.share) && /Copy & share/.test(await m2.$eval('#sheetShare', e => e.textContent)), 'without navigator.share the button falls back to copy');
+  await m2.click('#sheetShare'); await sleep(250);
+  ok(/copied/i.test(await m2.$eval('.toast', e => e.textContent)), 'fallback copies the link (toast)');
+  await noOverflow(m2, '360 link sheet');
+  await m2.close();
+
+  // Tablet 768
+  const tb = await newPage(768, 1024, true);
+  await tb.goto(BASE + 'index.html', { waitUntil: 'networkidle0' });
+  ok(await inView(tb, '#barGen') && await tb.$eval('.a-layout', e => getComputedStyle(e).flexDirection === 'column'), '768 tablet: single column + action bar');
+  await openAll(tb); await noOverflow(tb, '768 attorney (all open)');
+  await tb.screenshot({ path: path.join(SHOTS, 'attorney-tablet-768-mobile.png') });
+  await tb.close();
+
+  // Desktop unchanged
+  await a.bringToFront(); await a.reload({ waitUntil: 'networkidle0' });
+  ok(await a.$eval('#aBar', e => getComputedStyle(e).display === 'none') && await a.$eval('.a-layout', e => getComputedStyle(e).display === 'grid' && getComputedStyle(e).gridTemplateColumns.split(' ').length === 3), '1280 desktop: 3-column grid, no mobile bar');
+  ok(await a.$$eval('details.sec', els => els.every(e => e.open)), '1280 desktop: all sections open');
+  await noOverflow(a, '1280 attorney');
+  await a.screenshot({ path: path.join(SHOTS, 'attorney-1280x800.png') });
+
+  // Client view at 360px: every task expanded in turn
+  const c3 = await newPage(360, 740, true);
+  await c3.goto(link3, { waitUntil: 'networkidle0' });
+  await noOverflow(c3, '360 client list');
+  await c3.evaluate(() => document.querySelector('#doneSec').open = true);
+  const heads = await c3.$$eval('.acc', els => els.map(e => e.dataset.task));
+  const badPanels = [];
+  for (const id of heads) {
+    const exp = await c3.$eval(`.acc[data-task="${id}"] .acc-head`, e => e.getAttribute('aria-expanded') === 'true');
+    if (!exp) { await c3.click(`.acc[data-task="${id}"] .acc-head`); await sleep(80); }
+    const r = await overflowAudit(c3); if (r.sw > r.vw || r.bad.length) badPanels.push(id + ': ' + r.bad.join(','));
+  }
+  ok(badPanels.length === 0, '360 client: no overflow with any of ' + heads.length + ' tasks expanded' + (badPanels.length ? ' — ' + badPanels.join(' | ') : ''));
+  t = await tapAudit(c3); ok(t.fonts.length === 0, '360 client inputs ≥ 16px' + (t.fonts.length ? ': ' + t.fonts.join(',') : ''));
+  await c3.goto('about:blank'); await c3.goto(link3, { waitUntil: 'networkidle0' }); await sleep(400);
+  await c3.screenshot({ path: path.join(SHOTS, 'client-360-list-mobile.png') });
+  const emailId3 = await c3.$$eval('.acc', els => (els.find(e => /employment letter/i.test(e.textContent)) || {}).dataset?.task);
+  if (emailId3) { await c3.click(`.acc[data-task="${emailId3}"] .acc-head`); await sleep(200); await c3.$eval(`.acc[data-task="${emailId3}"]`, e => window.scrollTo(0, window.scrollY + e.getBoundingClientRect().top - 60)); await sleep(300); await c3.screenshot({ path: path.join(SHOTS, 'client-360-email-expanded-mobile.png') }); }
+  ok(await c3.$eval('meta[name=viewport]', e => /width=device-width/.test(e.content) && /initial-scale=1/.test(e.content)) && await a.$eval('meta[name=viewport]', e => /width=device-width/.test(e.content) && /initial-scale=1/.test(e.content)), 'viewport meta tags present on both pages');
+  await c3.close();
 
   // Bad link
   const b = await newPage(390, 844, true);

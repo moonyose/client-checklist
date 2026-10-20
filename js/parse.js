@@ -69,7 +69,7 @@
       segs.forEach(function (seg) {
         var dx = extractDate(seg, ref), rest = dx.rest, libId = matchLibrary(rest), title = cleanTitle(rest);
         if (!title && !libId) { if (dx.due && items.length) { var last = items[items.length - 1]; last.due = last.due || dx.due; last._explicit = true; } return; }
-        items.push({ libId: libId, title: title, due: dx.due, _explicit: !!dx.due });
+        items.push({ libId: libId, title: title, due: dx.due, src: seg.trim(), _explicit: !!dx.due });
       });
       var dated = items.filter(function (o) { return o._explicit; });
       if (dated.length === 1) items.forEach(function (o) { o.due = o.due || dated[0].due; });

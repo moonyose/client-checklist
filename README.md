@@ -51,11 +51,22 @@ Spanish). Click **Generate client link → Open client view** to see what she wo
    "Nov 15", "15 de noviembre", "11/15", "2026-11-15", "in 2 weeks", "next week", "tomorrow", "by Friday".
    One date inside a clause applies to every item in that clause. The 🎤 button uses the browser's speech
    recognition where available (Chrome/Edge/Safari). Otherwise use the phone/OS keyboard dictation.
+   Nothing is added straight away: **Preview tasks** shows an editable list first (change the matched library
+   task or make it custom, fix the title or due date, drop a row), then **Add N tasks** commits it.
 4. **Tasks**: reorder, remove, due date, note to client. Email tasks take a recipient name/address
    (e.g. the client's HR). Placeholder phone tasks take the number to call. Each task has a template preview.
 5. **Task library**: 26 built-in tasks in 4 types (document, email, phone, online/mail), searchable.
 6. **Share**: **Generate client link** packs the checklist into the link and shows its version and length.
    If you change something after generating, the link is marked as changed until you generate it again.
+
+**Phones and tablets.** Under 1100px wide the three columns become one column in working order
+(Clients → Client → Quick add → Tasks → Library → Reminders → Share). Each section collapses, and on phones the
+client list, library, reminders and share start collapsed. The collapsed client list shows the current client's name.
+A sticky bottom bar holds **🎤 Dictate**, which opens Quick add and starts speech recognition or focuses the box
+for keyboard dictation, and **Generate link**, which opens a bottom sheet with **Share…**. That button uses
+`navigator.share`, the OS share sheet for Messages, WhatsApp or email, and falls back to copying the link.
+Library rows are full-width "tap to add" buttons. Tap targets are at least 44px and inputs are 16px, so iOS
+doesn't zoom. Tests check 360, 390 and 768px widths for horizontal overflow.
 
 **Drafts persist.** Every edit autosaves to this browser's `localStorage` (`cc.attorney.v1`). The client list
 on the left survives refreshes and restarts. Each checklist has a stable `checklistId` (`cl_…`) and each

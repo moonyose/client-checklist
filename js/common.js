@@ -123,7 +123,10 @@
   }
 
   function copyText(text) {
-    if (navigator.clipboard && global.isSecureContext) return navigator.clipboard.writeText(text);
+    if (navigator.clipboard && global.isSecureContext) return navigator.clipboard.writeText(text).catch(function () { return legacyCopy(text); });
+    return legacyCopy(text);
+  }
+  function legacyCopy(text) {
     var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
     document.body.appendChild(ta); ta.select();
     try { document.execCommand('copy'); } catch (e) {}

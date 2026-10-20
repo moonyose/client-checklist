@@ -68,6 +68,7 @@
       return '<button class="draft' + (id === store.currentId ? ' active' : '') + '" data-id="' + id + '"><b>' + CC.esc(d.clientName || 'Untitled client') +
         '</b><small>' + d.tasks.length + ' tasks · ' + CC.esc((LIB.CASE_TYPES[d.caseType] || {}).label || '') + '</small></button>';
     }).join('');
+    var d = cur(); $('sumClient').textContent = d ? (d.clientName || 'Untitled client') : '';
   }
 
   function renderForm() {
@@ -104,8 +105,8 @@
         '<textarea data-k="text" rows="2" placeholder="Instructions for the client (shown as written)" style="grid-column:1/-1">' + CC.esc(t.text) + '</textarea>' : '';
       return '<div class="task-item" data-idx="' + idx + '"><div class="head"><span class="badge ' + type + '">' + TYPE_LABEL[type] + '</span>' +
         '<span class="title">' + CC.esc(taskTitle(t)) + '</span>' +
-        '<button class="btn small ghost" data-act="up" title="Move up">↑</button><button class="btn small ghost" data-act="down" title="Move down">↓</button>' +
-        '<button class="btn small ghost" data-act="remove" title="Remove">✕</button></div>' +
+        '<span class="ti-acts"><button class="btn small ghost icon" data-act="up" title="Move up" aria-label="Move up">↑</button><button class="btn small ghost icon" data-act="down" title="Move down" aria-label="Move down">↓</button>' +
+        '<button class="btn small ghost icon" data-act="remove" title="Remove" aria-label="Remove task">✕</button></span></div>' +
         '<div class="opts"><input type="date" data-k="due" value="' + (t.due || '') + '" title="Due date">' +
         '<input data-k="note" placeholder="Note to client (optional)" value="' + CC.esc(t.note) + '">' + customFields + extra + '</div>' + preview + '</div>';
     }).join('');
@@ -114,13 +115,16 @@
   function renderLibrary() {
     var q = $('libSearch').value.trim().toLowerCase(), ty = $('libType').value, used = {};
     cur().tasks.forEach(function (t) { if (t.libId) used[t.libId] = 1; });
-    $('library').innerHTML = LIB.ITEMS.filter(function (it) {
+    var list = LIB.ITEMS.filter(function (it) {
       return (!ty || it.type === ty) && (!q || (it.title.en + ' ' + it.summary.en + ' ' + it.keywords.join(' ')).toLowerCase().indexOf(q) >= 0);
-    }).map(function (it) {
+    });
+    $('libCount').textContent = '(' + list.length + (list.length !== LIB.ITEMS.length ? ' of ' + LIB.ITEMS.length : '') + ')';
+    $('library').innerHTML = list.length ? list.map(function (it) {
       var v = it.phoneDisplay ? ' · ' + it.phoneDisplay + (it.verified ? ' ✓' : '') : (it.placeholder ? ' · <span class="badge warn">placeholder</span>' : (it.url && it.verified ? ' · link ✓' : ''));
-      return '<div class="lib-item' + (used[it.id] ? ' added' : '') + '"><div class="t"><b>' + CC.esc(it.title.en) + '</b><span class="badge ' + it.type + '">' + TYPE_LABEL[it.type] + '</span>' +
-        '<span class="small muted">' + v + '</span></div><button class="btn small" data-add="' + it.id + '"' + (used[it.id] ? ' disabled' : '') + '>' + (used[it.id] ? 'Added' : 'Add') + '</button></div>';
-    }).join('');
+      // The whole row is one tap target ("tap to add").
+      return '<button type="button" class="lib-item' + (used[it.id] ? ' added' : '') + '" data-add="' + it.id + '"' + (used[it.id] ? ' disabled aria-label="' + CC.esc(it.title.en) + ' (already added)"' : ' aria-label="Add ' + CC.esc(it.title.en) + '"') + '><span class="t"><b>' + CC.esc(it.title.en) + '</b><span class="badge ' + it.type + '">' + TYPE_LABEL[it.type] + '</span>' +
+        '<span class="small muted">' + v + '</span></span><span class="add-pill">' + (used[it.id] ? '✓ Added' : '+ Add') + '</span></button>';
+    }).join('') : '<p class="muted small" style="padding:.6rem 0">No matching tasks. Use “+ Custom task” for anything else.</p>';
   }
 
   /* Repo client files (read-only view; edit here then download JSON, or let the AI assistant commit) */
@@ -195,7 +199,7 @@
   };
   $('applyDue').onclick = function () { var d = cur(); if (!d.defaultDue) return; d.tasks.forEach(function (t) { if (!t.due) t.due = d.defaultDue; }); save(); renderTasks(); renderLink(); };
   $('addCustom').onclick = function () { cur().tasks.push(newTask(null, { title: '', due: cur().defaultDue || '' })); save(); renderTasks(); renderLink(); };
-  $('library').addEventListener('click', function (e) { var id = e.target.getAttribute('data-add'); if (id && addLib(id)) { save(); renderTasks(); renderLibrary(); renderLink(); } });
+  $('library').addEventListener('click', function (e) { var b = e.target.closest('[data-add]'); var id = b && !b.disabled && b.getAttribute('data-add'); if (id && addLib(id)) { save(); renderTasks(); renderLibrary(); renderLink(); toast('Added: ' + LIB.byId[id].title.en); } });
   $('libSearch').oninput = renderLibrary; $('libType').onchange = renderLibrary;
 
   $('tasks').addEventListener('input', function (e) {
@@ -206,7 +210,7 @@
     save(); renderLink();
   });
   $('tasks').addEventListener('click', function (e) {
-    var act = e.target.getAttribute('data-act'); if (!act) return;
+    var ab = e.target.closest('[data-act]'), act = ab && ab.getAttribute('data-act'); if (!act) return;
     var d = cur(), i = +e.target.closest('.task-item').getAttribute('data-idx');
     if (act === 'remove') d.tasks.splice(i, 1);
     if (act === 'up' && i > 0) d.tasks.splice(i - 1, 0, d.tasks.splice(i, 1)[0]);
@@ -224,20 +228,64 @@
   };
 
   /* Quick add / dictation */
+  // Step 1: parse into an editable preview. Step 2: confirm adds them.
+  var preview = [];
+  function libOptions(sel) {
+    return '<option value="">Custom task (type a title)</option>' + ['doc', 'email', 'phone', 'online'].map(function (ty) {
+      return '<optgroup label="' + TYPE_LABEL[ty] + '">' + LIB.ITEMS.filter(function (it) { return it.type === ty; }).map(function (it) {
+        return '<option value="' + it.id + '"' + (it.id === sel ? ' selected' : '') + '>' + CC.esc(it.title.en) + '</option>'; }).join('') + '</optgroup>';
+    }).join('');
+  }
+  function renderPreview() {
+    var d = cur();
+    $('parsePreview').classList.toggle('hidden', !preview.length);
+    $('parseConfirm').textContent = 'Add ' + preview.length + ' task' + (preview.length === 1 ? '' : 's');
+    $('pvRows').innerHTML = preview.map(function (p, i) {
+      var dup = p.libId && d.tasks.some(function (t) { return t.libId === p.libId; });
+      return '<div class="pv-row" data-i="' + i + '">' +
+        '<div class="pv-main"><label class="sr" for="pvSel' + i + '">Task ' + (i + 1) + '</label><select id="pvSel' + i + '" data-pk="libId">' + libOptions(p.libId) + '</select>' +
+        (p.libId ? '' : '<input data-pk="title" placeholder="Custom task title" value="' + CC.esc(p.title || '') + '" aria-label="Custom task title">') +
+        (dup ? '<span class="small muted">Already in the list — only a missing due date will be filled.</span>' : '') + '</div>' +
+        '<div class="pv-side"><input type="date" data-pk="due" value="' + (p.due || '') + '" aria-label="Due date"><button class="btn ghost icon" data-pv="remove" aria-label="Drop this task" title="Drop">✕</button></div>' +
+        (p.src ? '<div class="small muted pv-src">Heard: “' + CC.esc(p.src) + '”</div>' : '') + '</div>';
+    }).join('');
+  }
   $('parseBtn').onclick = function () {
-    var items = window.CC_PARSE.parse($('dictation').value), d = cur(), added = [], skipped = 0;
-    items.forEach(function (p) {
+    preview = window.CC_PARSE.parse($('dictation').value).map(function (p) { return { libId: p.libId || '', title: p.title || '', due: p.due || '', src: p.src || '' }; });
+    $('parseMsg').textContent = preview.length ? 'Found ' + preview.length + ' — check, then add.' : 'Nothing recognized — try one task per line.';
+    renderPreview();
+    if (preview.length) $('parsePreview').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
+  $('pvRows').addEventListener('input', onPv); $('pvRows').addEventListener('change', onPv);
+  function onPv(e) {
+    var k = e.target.getAttribute('data-pk'); if (!k) return;
+    var p = preview[+e.target.closest('.pv-row').getAttribute('data-i')];
+    p[k] = e.target.value;
+    if (k === 'libId' && e.type === 'change') renderPreview();
+  }
+  $('pvRows').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-pv=remove]'); if (!b) return;
+    preview.splice(+b.closest('.pv-row').getAttribute('data-i'), 1); renderPreview();
+    if (!preview.length) $('parseMsg').textContent = '';
+  });
+  $('parseCancel').onclick = function () { preview = []; renderPreview(); $('parseMsg').textContent = ''; };
+  $('parseConfirm').onclick = function () {
+    var d = cur(), added = [], skipped = 0;
+    preview.forEach(function (p) {
       if (p.libId) {
         var existing = d.tasks.filter(function (t) { return t.libId === p.libId; })[0];
         if (existing) { if (p.due && !existing.due) existing.due = p.due; skipped++; return; }
         d.tasks.push(newTask(p.libId, { due: p.due || d.defaultDue || '' })); added.push(LIB.byId[p.libId].title.en);
       } else {
-        d.tasks.push(newTask(null, { title: p.title, due: p.due || d.defaultDue || '' })); added.push(p.title + ' (custom)');
+        var title = (p.title || '').trim() || 'Custom task';
+        d.tasks.push(newTask(null, { title: title, due: p.due || d.defaultDue || '' })); added.push(title + ' (custom)');
       }
     });
     save(); renderTasks(); renderLibrary(); renderLink();
-    $('parseMsg').textContent = items.length ? 'Added ' + added.length + (skipped ? ', ' + skipped + ' already in list' : '') + ': ' + added.join(' · ') : 'Nothing recognized — try one task per line.';
+    $('parseMsg').textContent = 'Added ' + added.length + (skipped ? ', ' + skipped + ' already in list' : '') + ': ' + added.join(' · ');
+    preview = []; renderPreview();
     if (added.length) $('dictation').value = '';
+    toast('Added ' + added.length + ' task' + (added.length === 1 ? '' : 's'));
   };
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition, rec = null;
   if (!SR) { $('micBtn').disabled = true; $('micBtn').title = 'Speech recognition is not available in this browser — type instead (or use your keyboard\'s dictation).'; }
@@ -247,18 +295,78 @@
     rec = new SR(); rec.lang = 'en-US'; rec.continuous = true; rec.interimResults = false;
     var base = $('dictation').value;
     rec.onresult = function (ev) { var txt = ''; for (var i = 0; i < ev.results.length; i++) txt += ev.results[i][0].transcript + ' '; $('dictation').value = (base ? base + '\n' : '') + txt.trim(); };
-    rec.onend = function () { rec = null; $('micBtn').classList.remove('on'); $('micBtn').textContent = '🎤 Dictate'; };
-    rec.start(); $('micBtn').classList.add('on'); $('micBtn').textContent = '■ Stop';
+    rec.onend = function () { rec = null; $('micBtn').classList.remove('on'); $('micBtn').textContent = '🎤 Dictate'; $('barMic').textContent = '🎤 Dictate'; };
+    rec.onerror = function (ev) { toast(ev.error === 'not-allowed' ? 'Microphone blocked — type, or use your keyboard\'s 🎤' : 'Dictation stopped (' + ev.error + ') — you can type instead'); $('dictation').focus(); };
+    try { rec.start(); } catch (err) { rec = null; $('dictation').focus(); return; }
+    $('micBtn').classList.add('on'); $('micBtn').textContent = '■ Stop';
   };
 
   /* Share */
-  $('genLink').onclick = function () {
+  function generate() {
     var d = cur();
-    if (!d.tasks.length) { toast('Add at least one task first'); return; }
+    if (!d.tasks.length) { toast('Add at least one task first'); return false; }
     var s = sig(d);
     if (s !== d.lastLinkSig) { d.rev = (d.rev || 0) + 1; d.lastLinkSig = s; }
-    d.lastLink = linkFor(d); save(); renderLink();
+    d.lastLink = linkFor(d); save(); renderLink(); return true;
+  }
+  $('genLink').onclick = generate;
+
+  /* Share via the OS share sheet when available, otherwise copy. */
+  function shareLink(url) {
+    var d = cur(), name = d.clientName || 'client';
+    if (navigator.share) {
+      return navigator.share({ title: 'Your checklist', text: (d.lang === 'es' ? 'Hola ' + name + ', aquí está su lista de tareas:' : 'Hi ' + name + ', here is your checklist:'), url: url })
+        .then(function () { toast('Shared'); }, function (err) { if (err && err.name === 'AbortError') return; return CC.copyText(url).then(function () { toast('Link copied'); }); });
+    }
+    return CC.copyText(url).then(function () { toast('Link copied — paste it into a text or email'); });
+  }
+  $('sheetShare').textContent = navigator.share ? 'Share…' : 'Copy & share';
+  var lastFocus = null;
+  function openSheet() {
+    var d = cur(), repo = !!(d.fromRepo || repoFiles[d.id]);
+    $('sheetClient').textContent = d.clientName || 'client';
+    $('sheetLink').textContent = d.lastLink; $('sheetOpen').href = d.lastLink;
+    $('sheetMeta').textContent = d.tasks.length + ' tasks · version ' + d.rev + ' · ' + (d.lang === 'es' ? 'Spanish' : 'English');
+    $('sheetRepo').classList.toggle('hidden', !repo);
+    if (repo) $('sheetRepoLink').textContent = new URL('client.html?c=' + d.id, location.href).href;
+    lastFocus = document.activeElement;
+    $('sheet').classList.remove('hidden'); $('sheetBackdrop').classList.remove('hidden'); document.body.classList.add('sheet-open');
+    $('sheetShare').focus();
+  }
+  function closeSheet() {
+    $('sheet').classList.add('hidden'); $('sheetBackdrop').classList.add('hidden'); document.body.classList.remove('sheet-open');
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  $('barGen').onclick = function () { if (generate()) openSheet(); };
+  $('sheetShare').onclick = function () { shareLink(cur().lastLink); };
+  $('sheetCopy').onclick = function () { CC.copyText(cur().lastLink).then(function () { toast('Link copied'); }); };
+  $('sheetRepoShare').onclick = function () { shareLink($('sheetRepoLink').textContent); };
+  $('sheetClose').onclick = closeSheet; $('sheetBackdrop').onclick = closeSheet;
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('sheet').classList.contains('hidden')) closeSheet(); });
+
+  /* Mobile bar mic: real speech recognition when the browser has it, otherwise the keyboard's dictation key. */
+  $('barMic').onclick = function () {
+    var sec = $('secDictate'); sec.open = true;
+    sec.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    if (SR) { $('micBtn').click(); $('barMic').textContent = rec ? '■ Stop' : '🎤 Dictate'; return; }
+    $('dictation').focus();
+    toast('Tap the 🎤 on your keyboard to dictate, then “Preview tasks”');
   };
+
+  /* Collapsible sections: on phones/tablets start with the essentials open. */
+  var narrow = window.matchMedia('(max-width: 1099px)');
+  function applySections() {
+    var closedOnMobile = ['secClients', 'secReminders', 'secShare', 'secLibrary'];
+    ['secClients', 'secClient', 'secReminders', 'secDictate', 'secTasks', 'secShare', 'secLibrary'].forEach(function (id) {
+      $(id).open = !(narrow.matches && closedOnMobile.indexOf(id) >= 0);
+    });
+  }
+  applySections();
+  if (narrow.addEventListener) narrow.addEventListener('change', applySections);
+  // Opening a client from the list on a phone: collapse the list and jump to the form.
+  ['drafts', 'repoClients'].forEach(function (id) { $(id).addEventListener('click', function (e) {
+    if (narrow.matches && e.target.closest('.draft')) setTimeout(function () { $('secClients').open = false; $('secClient').scrollIntoView({ block: 'start' }); }, 0);
+  }); });
   $('copyLink').onclick = function () { CC.copyText(cur().lastLink).then(function () { toast('Link copied'); }); };
 
   var tt;
@@ -268,5 +376,5 @@
   }
 
   renderDrafts(); renderForm(); loadRepoClients();
-  window.__attorney = { store: function () { return store; }, linkFor: linkFor, toPayload: toPayload };
+  window.__attorney = { store: function () { return store; }, linkFor: linkFor, toPayload: toPayload, openSheet: openSheet };
 })();

@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f3a5f">
 <title>Client Checklist — Attorney view (prototype)</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 rx=%224%22 fill=%22%231f3a5f%22/%3E%3Cpath d=%22M4 8.5l2.5 2.5L12 5%22 stroke=%22white%22 stroke-width=%222%22 fill=%22none%22/%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/styles.css">
@@ -10,35 +11,38 @@
 <body>
 <header class="a-top">
   <span class="logo">Client Checklist</span>
-  <span class="proto">Prototype · optional editor — your AI assistant can edit client files directly · templates are examples to review</span>
+  <span class="proto"><span class="long">Prototype · optional editor — your AI assistant can edit client files directly · templates are examples to review</span><span class="short">Prototype · example templates</span></span>
   <span class="grow"></span>
-  <a class="btn small" href="README.md" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.35)">How it works</a>
+  <a class="btn small hdr-btn" href="README.md">How it works</a>
 </header>
 
 <div class="a-layout">
-  <!-- Drafts -->
   <aside class="a-side">
-    <div class="row" style="justify-content:space-between;margin-bottom:.4rem"><h2 style="margin:0">Clients</h2></div>
-    <div id="drafts"></div>
-    <button class="btn small block" id="newDraft" style="margin-top:.5rem">+ New checklist</button>
-    <button class="btn small ghost block" id="resetExample" style="margin-top:.25rem">Restore “Maria Example”</button>
-    <p class="small muted" style="margin-top:1rem">Drafts are saved automatically in this browser only.</p>
-    <div class="row" style="justify-content:space-between;margin:1.25rem 0 .4rem"><h2 style="margin:0">In the repo</h2><button class="btn small ghost" id="repoRefresh" title="Reload from GitHub">↻</button></div>
-    <p class="small muted" style="margin:0 0 .4rem">Client files your AI assistant maintains (<code>data/clients/*.json</code>). Click one to view or edit it here.</p>
-    <div id="repoClients" class="small muted">Loading…</div>
+    <details class="sec" id="secClients" open>
+      <summary><h2>Clients</h2><span class="sum-meta" id="sumClient"></span></summary>
+      <div class="sec-body">
+        <div id="drafts"></div>
+        <button class="btn small block" id="newDraft" style="margin-top:.5rem">+ New checklist</button>
+        <button class="btn small ghost block" id="resetExample" style="margin-top:.25rem">Restore “Maria Example”</button>
+        <p class="small muted" style="margin-top:1rem">Drafts are saved automatically in this browser only.</p>
+        <div class="row" style="justify-content:space-between;margin:1.25rem 0 .4rem"><h3 style="margin:0">In the repo</h3><button class="btn small ghost icon" id="repoRefresh" title="Reload from GitHub" aria-label="Reload client files from GitHub">↻</button></div>
+        <p class="small muted" style="margin:0 0 .4rem">Client files your AI assistant maintains (<code>data/clients/*.json</code>). Tap one to view or edit it here.</p>
+        <div id="repoClients" class="small muted">Loading…</div>
+      </div>
+    </details>
   </aside>
 
-  <!-- Main -->
   <main class="a-main">
-    <div class="card">
-      <h2>1 · Client</h2>
+    <details class="sec card" id="secClient" open>
+      <summary><h2>1 · Client</h2></summary>
+      <div class="sec-body">
       <div class="grid3">
         <div><label for="clientName">Client name</label><input id="clientName" autocomplete="off" placeholder="First name is enough"></div>
         <div><label for="lang">Client language</label>
           <select id="lang"><option value="en">English</option><option value="es">Español (Spanish)</option></select></div>
         <div><label for="caseType">Case type</label><select id="caseType"></select></div>
       </div>
-      <div class="row" style="margin-top:.6rem">
+      <div class="row due-row" style="margin-top:.6rem">
         <button class="btn small" id="addSuggested">Add suggested tasks for this case type</button>
         <span class="grow"></span>
         <label for="defaultDue" style="margin:0">Default due date</label>
@@ -49,44 +53,59 @@
       <textarea id="message" rows="2"></textarea>
       <div class="grid3">
         <div><label for="attName">Your name / office</label><input id="attName"></div>
-        <div><label for="attPhone">Office phone</label><input id="attPhone" placeholder="(555) 555-0100"></div>
+        <div><label for="attPhone">Office phone</label><input id="attPhone" type="tel" placeholder="(555) 555-0100"></div>
         <div><label for="attEmail">Office email</label><input id="attEmail" type="email" placeholder="office@example.com"></div>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <div class="row"><h2 class="grow" style="margin:0">2 · Daily reminders</h2><span class="badge warn">Reminders: coming in the real version</span></div>
-      <p class="small muted" style="margin:.25rem 0 .5rem">Saved with the checklist now so the future backend can text/email the client every day until all tasks are done. Today, the client can add a daily reminder to their own calendar from their link.</p>
+    <details class="sec card" id="secReminders" open>
+      <summary><h2>2 · Daily reminders</h2><span class="badge warn">Coming in the real version</span></summary>
+      <div class="sec-body">
+      <p class="small muted" style="margin:.25rem 0 .5rem">Reminders: coming in the real version. Saved with the checklist now so the future backend can text/email the client every day until all tasks are done. Today, the client can add a daily reminder to their own calendar from their link.</p>
       <div class="grid3">
-        <div><label><input type="checkbox" id="remEmail" style="width:auto"> Email reminders</label><input id="remEmailAddr" type="email" placeholder="client@example.com"></div>
-        <div><label><input type="checkbox" id="remSms" style="width:auto"> Text (SMS) reminders</label><input id="remPhone" type="tel" placeholder="(555) 555-0123"></div>
+        <div><label class="chk"><input type="checkbox" id="remEmail"> Email reminders</label><input id="remEmailAddr" type="email" placeholder="client@example.com"></div>
+        <div><label class="chk"><input type="checkbox" id="remSms"> Text (SMS) reminders</label><input id="remPhone" type="tel" placeholder="(555) 555-0123"></div>
         <div><label for="remTime">Time of day</label><input id="remTime" type="time" value="09:00"></div>
       </div>
       <p class="small muted" style="margin-top:.4rem">Tip: for the prototype, prefer leaving contact fields empty — anything here is placed inside the link.</p>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h2>3 · Quick add — type or dictate</h2>
-      <p class="small muted" style="margin:0 0 .4rem">Example: “Birth certificate, tax transcripts and police clearance by November 15; employment letter in 2 weeks; letter from her pastor by Friday”. Recognized items use the library; anything else becomes a custom task.</p>
-      <textarea id="dictation" rows="3" placeholder="Type, paste, or press the microphone and speak…"></textarea>
+    <details class="sec card" id="secDictate" open>
+      <summary><h2>3 · Quick add — type or dictate</h2></summary>
+      <div class="sec-body">
+      <p class="small muted" style="margin:0 0 .4rem">Example: “Birth certificate, tax transcripts and police clearance by November 15; employment letter in 2 weeks; letter from her pastor by Friday”. You’ll see a preview you can fix before anything is added.</p>
+      <textarea id="dictation" rows="3" placeholder="Type, paste, or tap 🎤 and speak…"></textarea>
       <div class="row" style="margin-top:.5rem">
         <button class="btn small mic" id="micBtn" title="Uses your browser's speech recognition, if available">🎤 Dictate</button>
-        <button class="btn small primary" id="parseBtn">Add these tasks</button>
+        <button class="btn small primary" id="parseBtn">Preview tasks</button>
         <span id="parseMsg" class="small muted"></span>
       </div>
-    </div>
+      <div id="parsePreview" class="hidden" aria-live="polite">
+        <h3 style="margin:.9rem 0 .4rem">Check before adding</h3>
+        <div id="pvRows"></div>
+        <div class="row" style="margin-top:.5rem">
+          <button class="btn primary" id="parseConfirm">Add tasks</button>
+          <button class="btn" id="parseCancel">Cancel</button>
+        </div>
+      </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <div class="row"><h2 class="grow" style="margin:0">4 · Tasks in this checklist <span id="taskCount" class="muted small"></span></h2>
-        <button class="btn small" id="addCustom">+ Custom task</button></div>
+    <details class="sec card" id="secTasks" open>
+      <summary><h2>4 · Tasks <span id="taskCount" class="muted small"></span></h2></summary>
+      <div class="sec-body">
+      <div class="row"><span class="grow"></span><button class="btn small" id="addCustom">+ Custom task</button></div>
       <div id="tasks" style="margin-top:.6rem"></div>
-    </div>
+      </div>
+    </details>
   </main>
 
-  <!-- Right -->
   <aside class="a-right">
-    <div class="card" id="shareCard">
-      <h2>5 · Share with client</h2>
+    <details class="sec card" id="secShare" open>
+      <summary><h2>5 · Share with client</h2></summary>
+      <div class="sec-body" id="shareCard">
       <div id="repoShare" class="hidden" style="margin-bottom:.6rem">
         <div class="small muted">Repo link (always reads the latest file):</div>
         <div class="linkbox" id="repoLinkText"></div>
@@ -103,21 +122,51 @@
         </div>
       </div>
       <div class="notice" style="margin-top:.6rem">Prototype only: the whole checklist is packed inside the link (nothing is stored on a server). Don’t put sensitive details (A-numbers, SSNs, addresses) in notes. A real version needs a secure backend.</div>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h2>Task library</h2>
-      <div class="row">
-        <input id="libSearch" placeholder="Search tasks…" class="grow" style="width:auto">
-        <select id="libType" style="width:auto">
+    <details class="sec card" id="secLibrary" open>
+      <summary><h2>Task library <span class="muted small" id="libCount"></span></h2></summary>
+      <div class="sec-body">
+      <div class="row lib-filter">
+        <input id="libSearch" type="search" placeholder="Search tasks…" class="grow" aria-label="Search task library">
+        <select id="libType" aria-label="Filter by type">
           <option value="">All types</option><option value="doc">Documents</option><option value="email">Email</option>
           <option value="phone">Phone</option><option value="online">Online / mail</option>
         </select>
       </div>
       <div class="lib-list" id="library"></div>
       <p class="small muted" style="margin-top:.5rem">Phone numbers and links marked ✓ were checked against official agency pages on <span id="verifiedOn"></span>. Others are placeholders to fill in.</p>
-    </div>
+      </div>
+    </details>
   </aside>
+</div>
+
+<!-- Mobile action bar -->
+<nav class="a-bar" id="aBar" aria-label="Quick actions">
+  <button class="btn" id="barMic">🎤 Dictate</button>
+  <button class="btn primary" id="barGen">Generate link</button>
+</nav>
+
+<!-- Link sheet -->
+<div class="sheet-backdrop hidden" id="sheetBackdrop"></div>
+<div class="sheet hidden" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="sheet-grip" aria-hidden="true"></div>
+  <h2 id="sheetTitle">Link for <span id="sheetClient"></span></h2>
+  <p class="small muted" id="sheetMeta" style="margin:.1rem 0 .5rem"></p>
+  <div class="linkbox" id="sheetLink"></div>
+  <div class="sheet-actions">
+    <button class="btn primary" id="sheetShare">Share…</button>
+    <button class="btn" id="sheetCopy">Copy link</button>
+    <a class="btn" id="sheetOpen" target="_blank" rel="noopener">Open client view</a>
+  </div>
+  <div id="sheetRepo" class="hidden">
+    <p class="small muted" style="margin:.8rem 0 .3rem">Repo link (always reads the latest file):</p>
+    <div class="linkbox" id="sheetRepoLink"></div>
+    <div class="sheet-actions"><button class="btn" id="sheetRepoShare">Share repo link</button></div>
+  </div>
+  <p class="small notice" style="margin-top:.8rem">Prototype: anyone with the link can read this checklist. Example data only.</p>
+  <button class="btn block" id="sheetClose" style="margin-top:.6rem">Close</button>
 </div>
 
 <footer class="small muted" style="text-align:center;padding:1rem 0 2rem">Prototype - example templates, not legal advice</footer>
